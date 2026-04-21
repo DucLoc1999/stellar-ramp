@@ -1,0 +1,29 @@
+{
+  "name": "payment-svc",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Price engine, fee management and SePay integration",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "migrate": "knex migrate:latest --knexfile src/knexfile.ts",
+    "migrate:rollback": "knex migrate:rollback --knexfile src/knexfile.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/swagger": "^8.15.0",
+    "@fastify/swagger-ui": "^4.2.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.29.1",
+    "knex": "^3.1.0",
+    "mysql2": "^3.11.3",
+    "sepay-pg-node": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.5.4"
+  }
+}

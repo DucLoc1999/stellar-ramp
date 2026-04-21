@@ -1,0 +1,16 @@
+# env
+.env
+.env.local
+.env.prod
+
+# build output
+dist/
+
+# dependencies
+node_modules/
+
+# agent
+.claude/
+skills-lock.json
+.agent/
+.agents/
