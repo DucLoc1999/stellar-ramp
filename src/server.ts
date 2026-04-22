@@ -32,7 +32,7 @@ async function start() {
   await app.register(swaggerUi, { routePrefix: '/docs' });
 
   app.get('/health', async () => ({ status: 'ok' }));
-  await app.register(priceRoutes, { prefix: '/api/price' });
+  await app.register(priceRoutes, { prefix: '/api/rate' });
   await app.register(adminRoutes, { prefix: '/config' });
   await app.register(orderRoutes, { prefix: '/api/orders' });
   await app.register(sepayWebhookRoutes, { prefix: '/api/webhooks' });

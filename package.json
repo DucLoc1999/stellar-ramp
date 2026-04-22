@@ -8,8 +8,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "migrate": "knex migrate:latest --knexfile src/knexfile.ts",
-    "migrate:rollback": "knex migrate:rollback --knexfile src/knexfile.ts"
+    "migrate": "tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts",
+    "migrate:rollback": "tsx node_modules/.bin/knex migrate:rollback --knexfile src/knexfile.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -18,7 +18,7 @@
     "dotenv": "^16.4.5",
     "fastify": "^4.29.1",
     "knex": "^3.1.0",
-    "mysql2": "^3.11.3",
+    "pg": "^8.13.0",
     "sepay-pg-node": "^1.0.0"
   },
   "devDependencies": {

@@ -1,7 +1,9 @@
 import type { Knex } from 'knex';
 
+const schema = process.env.DB_SCHEMA ?? 'payment_svc';
+
 export async function up(knex: Knex): Promise<void> {
-  await knex.schema.createTable('fee_audit_log', (t) => {
+  await knex.schema.withSchema(schema).createTable('fee_audit_log', (t) => {
     t.bigIncrements('id');
     t.string('config_key', 100).notNullable();
     t.string('old_value', 255);
@@ -12,5 +14,5 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.dropTableIfExists('fee_audit_log');
+  await knex.schema.withSchema(schema).dropTableIfExists('fee_audit_log');
 }

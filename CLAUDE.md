@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Runtime**: Node.js, TypeScript (ES2022, CommonJS output)
 - **Web**: Fastify 4
-- **DB**: MySQL via Knex 3 (`mysql2` driver)
+- **DB**: PostgreSQL via Knex 3 (`pg` driver)
 - **Payments**: `sepay-pg-node` (SePay sandbox/prod PG integration)
 
 ## Commands
@@ -36,7 +36,7 @@ No lint, test, or format scripts are configured.
 
 | Prefix | File | Auth |
 |---|---|---|
-| `/api/price` | `priceRoutes.ts` | None |
+| `/api/rate` | `priceRoutes.ts` | None |
 | `/config` | `adminRoutes.ts` | `X-Admin-Key` header |
 | `/api/orders` | `orderRoutes.ts` | None |
 | `/api/webhooks` | `sepayWebhookRoutes.ts` | `X-Secret-Key` header |

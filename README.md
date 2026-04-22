@@ -26,7 +26,7 @@ npm run start      # Run production build
 
 ## API Endpoints
 - `GET /health` — Health check
-- `/api/price/*` — Price engine
+- `/api/rate/*` — Price engine
 - `/api/orders/*` — Order management
 - `/config/*` — Admin API (requires `ADMIN_API_KEY`)
 - `/api/webhooks/sepay` — SePay IPN (requires `SEPAY_KEY`)
