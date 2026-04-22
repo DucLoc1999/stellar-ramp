@@ -9,6 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **DB**: PostgreSQL via Knex 3 (`pg` driver)
 - **Payments**: `sepay-pg-node` (SePay sandbox/prod PG integration)
 
+## Docker
+
+Production image uses multi-stage build (builder → production). Migration runs in-process on startup via `onReady` hook — no `tsx` required in prod. Entrypoint only handles log dir permissions before handing off to `node dist/server.js`.
+
 ## Commands
 
 ```bash
@@ -60,7 +64,7 @@ No lint, test, or format scripts are configured.
 
 **DB singleton**: `src/db.ts` — shared Knex instance, pool min:2/max:10. Import as `import db from '../db'`.
 
-**Migrations**: `src/migrations/` numbered `001_`, `002_`, `003_`. Knex config in `src/knexfile.ts` (dual-export: `export default` + `module.exports` for CLI compatibility).
+**Migrations**: `src/migrations/` numbered `000_`, `001_`, `002_`, `003_`. Knex config in `src/knexfile.ts` (dual-export: `export default` + `module.exports` for CLI compatibility). In production, migrations run automatically via `db.migrate.latest()` in the Fastify `onReady` hook — no separate migration step needed. A custom `migrationSource` in `src/db.ts` maps `.ts` names (stored in DB) to compiled `.js` files in `dist/migrations/`.
 
 ## Env / Secrets
 

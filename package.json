@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts",
+    "migrate:prod": "node node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js",
     "migrate:rollback": "tsx node_modules/.bin/knex migrate:rollback --knexfile src/knexfile.ts"
   },
   "dependencies": {

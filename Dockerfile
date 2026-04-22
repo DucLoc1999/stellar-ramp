@@ -26,10 +26,6 @@ RUN npm ci --only=production
 
 COPY --from=builder /app/dist ./dist
 
-COPY --from=builder /app/src/migrations ./src/migrations
-
-COPY --from=builder /app/src/knexfile.ts ./src/knexfile.ts
-
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
