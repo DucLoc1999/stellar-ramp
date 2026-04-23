@@ -36,42 +36,61 @@ No lint, test, or format scripts are configured.
 
 ## Architecture
 
-**Entrypoint** `src/server.ts` — top-level `await` (ES2022 module). Registers plugins in order: cors → swagger → swaggerUi → 4 route prefixes:
+**Entrypoint** `src/server.ts` — slim startup. Imports `buildApp()` from `./app`.
 
-| Prefix | File | Auth |
-|---|---|---|
-| `/api/rate` | `priceRoutes.ts` | None |
-| `/config` | `adminRoutes.ts` | `X-Admin-Key` header |
-| `/api/orders` | `orderRoutes.ts` | None |
-| `/api/webhooks` | `sepayWebhookRoutes.ts` | `X-Secret-Key` header |
+**App factory** `src/app.ts` — builds Fastify instance, registers plugins in order: cors → swagger → swaggerUi → errorHandler → routes:
+
+| Prefix | Route File | Handler File | Auth |
+|---|---|---|---|
+| `/api/rate` | `routes/priceRoutes.ts` | `controllers/priceController.ts` | None |
+| `/config` | `routes/configRoutes.ts` | `controllers/configController.ts` | None |
+| `/api/orders` | `routes/orderRoutes.ts` | `controllers/orderController.ts` | None |
+| `/api/webhooks` | `routes/webhookRoutes.ts` | `controllers/webhookController.ts` | Apikey |
+
+**Layers:**
+- `controllers/` — request handlers, delegate to services
+- `services/` — business logic (unchanged)
+- `models/types.ts` — shared interfaces (OrderState, DepositRequest, etc.)
+- `routes/` — Fastify route registration + JSON Schema
+- `middlewares/` — errorHandler, sepayAuth
 
 **API docs** served at `/docs` (Swagger UI).
 
-**Data flow for a buy order:**
-1. Caller hits `POST /api/orders/checkout` with `{ usdt_amount }`
-2. `orderService` → `priceService.getQuote()` → `binanceService` (Binance P2P, 30 s cache) + `configService` (spread/fee from DB)
+**Data flow for a deposit (buy USDT):**
+1. Client hits `POST /api/orders/deposit` with `{ amount, chain_id, token_address, recipient, callback }`
+2. `orderService.createDeposit()` → `priceService.getQuote('buy')` → `binanceService` (Binance P2P, 30 s cache) + `configService` (spread/fee from DB)
 3. `orderService` → `sepayPgService.createCheckoutSession()` → SePay SDK returns `checkout_url` + `form_fields`
-4. Order saved to DB with `payment_status: 'pending'`
-5. Caller polls `GET /api/orders/:payment_code` until `payment_status` changes
-6. SePay fires `POST /api/webhooks/sepay` IPN → `sepayService.handleSepayIpn()` matches by `order.order_invoice_number`, sets `payment_received`
+4. Order saved to DB with `payment_status: 'pending'`, `order_state: 1 (CREATED)`. Callback fired.
+5. Client receives checkout URL / QR code / bank info. Can also poll `GET /api/orders/:payment_code`.
+6. SePay detects bank deposit → fires `POST /api/webhooks/sepay` → `sepayService.handleSepayWebhook()` matches `code` to `payment_code`, deduplicates via `webhook_logs`, validates `transferAmount >= net_vnd`, sets `payment_received` + `order_state: 2 (PROCESSING)`. Callback fired to client's `callback` URL.
+7. External system handles actual USDT transfer and updates order state to COMPLETED via `updateOrderState()`.
+
+**Data flow for a withdrawal (sell USDT):**
+1. Client hits `POST /api/orders/withdrawal` with `{ amount, chain_id, token_address, callback, payment_info }` — saves order with bank details, `order_state: 1 (CREATED)`. Full processing logic TBD.
+
+**Order states:** 1=Created, 2=Processing, 3=Completed, 4=Failed, 5=Cancelled
+
+**Callback webhooks:** When `order_state` changes, the service POSTs `{ id, topic: "order.state.change", ts, payload: { order_id, old_order_state, new_order_state } }` to the order's `callback` URL (best-effort, 8 s timeout).
 
 **Key services:**
 - `binanceService.ts` — fetches median of top-5 Binance P2P listings (BUY + SELL sides separately), 30 s in-memory TTL cache, returns stale on failure
 - `configService.ts` — reads `config` table into a `Map` cache; `updateConfig()` writes through to DB and cache; logs `fee_rate_*` changes to `fee_audit_log`
 - `priceService.ts` — combines binance prices + spreads into buy/sell rates; computes full quotes with fees
 - `sepayPgService.ts` — thin wrapper around `SePayPgClient`; `createCheckoutSession()` calls `initCheckoutUrl()` + `initOneTimePaymentFields()`
-- `sepayService.ts` — IPN handler: validates `notification_type === 'ORDER_PAID'` + `order_status === 'CAPTURED'` + `transaction_status === 'APPROVED'`
+- `orderService.ts` — `createDeposit()` (buy USDT: quote + SePay checkout + save), `createWithdrawal()` (sell USDT: quote + save, logic TBD), `confirmPayment()` (marks `payment_received`, transitions to PROCESSING state, fires callback), `updateOrderState()` (generic state transition + callback)
+- `callbackService.ts` — `fireCallback(url, orderId, oldState, newState)` — best-effort POST to client's callback URL with order state change event
+- `sepayService.ts` — webhook handler: deduplicates via `webhook_logs` table, filters `transferType === 'in'`, matches `code` to `payment_code`, validates `transferAmount >= net_vnd`, calls `confirmPayment()`
 
 **DB singleton**: `src/db.ts` — shared Knex instance, pool min:2/max:10. Import as `import db from '../db'`.
 
-**Migrations**: `src/migrations/` numbered `000_`, `001_`, `002_`, `003_`. Knex config in `src/knexfile.ts` (dual-export: `export default` + `module.exports` for CLI compatibility). In production, migrations run automatically via `db.migrate.latest()` in the Fastify `onReady` hook — no separate migration step needed. A custom `migrationSource` in `src/db.ts` maps `.ts` names (stored in DB) to compiled `.js` files in `dist/migrations/`.
+**Migrations**: `src/migrations/` numbered `000_` through `005_`. Knex config in `src/knexfile.ts` (dual-export: `export default` + `module.exports` for CLI compatibility). In production, migrations run automatically via `db.migrate.latest()` in the Fastify `onReady` hook — no separate migration step needed. A custom `migrationSource` in `src/db.ts` maps `.ts` names (stored in DB) to compiled `.js` files in `dist/migrations/`.
 
 ## Env / Secrets
 
-All env vars loaded via `import 'dotenv/config'` in `src/server.ts`. See `.env.example` for the full list. Critical:
+All env vars loaded via `import 'dotenv/config'` in `src/server.ts` (via app.ts). See `.env.example` for the full list. Critical:
 
-- `SEPAY_KEY` — used by both `sepayPgService` (SDK `secret_key`) and `sepayAuth` middleware (`X-Secret-Key` header validation). If unset, all webhook requests return 401.
-- `ADMIN_API_KEY` — guards all `/config/*` routes.
+- `SEPAY_KEY` — used by `sepayPgService` (SDK `secret_key`) for creating checkout sessions.
+- `SEPAY_WEBHOOK_API_KEY` — used by `sepayAuth` middleware to validate the `Authorization: Apikey` header on incoming webhooks. If unset, all webhook requests return 401.
 - `SEPAY_ENV` — `sandbox` (default) or `production`.
 
 ## Config Table
@@ -85,11 +104,11 @@ Runtime-tunable values stored in the `config` DB table (key/value strings):
 | `fee_rate_buy` | `0.008` | 0.8% fee on buy orders |
 | `fee_rate_sell` | `0.008` | 0.8% fee on sell orders |
 
-Admin endpoint `GET /config/fees` reads these. Changes to `fee_rate_*` are automatically logged to `fee_audit_log`.
+Public endpoint `GET /config/fees` reads these. Changes to `fee_rate_*` are automatically logged to `fee_audit_log`.
 
 ## Payment Code
 
-Orders use `USDT247-<8-char-alphanumeric>` as unique identifier (stored as `payment_code`). This is also the `order_invoice_number` sent to SePay, and what SePay echoes back in the IPN `order.order_invoice_number` field.
+Orders use `USDT247-<8-char-alphanumeric>` as unique identifier (stored as `payment_code`). This is also the `order_invoice_number` sent to SePay SDK, and what SePay echoes back in the webhook `code` field (auto-detected from transfer description).
 
 ## tsconfig Notes
 

@@ -6,24 +6,23 @@ if (result.error) {
 
 import type { Knex } from 'knex';
 import path from 'path';
-
-const sslEnabled = process.env.DB_SSL !== 'false';
+import { databaseConfig } from './config/database';
 
 const config: Knex.Config = {
   client: 'pg',
   connection: {
-    host: String(process.env.DB_HOST ?? 'localhost'),
-    port: Number(process.env.DB_PORT ?? 5432),
-    user: String(process.env.DB_USER ?? 'postgres'),
-    password: String(process.env.DB_PASSWORD ?? ''),
-    database: String(process.env.DB_NAME ?? 'orbitlabs'),
-    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+    host: databaseConfig.host,
+    port: databaseConfig.port,
+    user: databaseConfig.user,
+    password: databaseConfig.password,
+    database: databaseConfig.database,
+    ssl: databaseConfig.ssl,
   },
   migrations: {
     directory: path.join(__dirname, 'migrations'),
-    extension: 'ts',
+    loadExtensions: ['.ts', '.js'],
   },
-  searchPath: [process.env.DB_SCHEMA ?? 'payment_svc', 'public'],
+  searchPath: [databaseConfig.schema, 'public'],
 };
 
 export default config;

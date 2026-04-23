@@ -1,16 +1,24 @@
 import type { FastifyInstance } from 'fastify';
-import { createBuyOrder, getOrderByCode } from '../services/orderService';
+import {
+  type DepositRequest,
+  type WithdrawalRequest,
+} from '../services/orderService';
+import { handleDeposit, handleWithdrawal, handleGetOrder } from '../controllers/orderController';
 
 export async function orderRoutes(app: FastifyInstance): Promise<void> {
-  app.post<{ Body: { usdt_amount: number } }>('/checkout', {
+  app.post<{ Body: DepositRequest }>('/deposit', {
     schema: {
       tags: ['Orders'],
-      summary: 'Create a buy order and return SePay checkout session',
+      summary: 'Create a deposit order (buy USDT) — returns SePay checkout session',
       body: {
         type: 'object',
-        required: ['usdt_amount'],
+        required: ['amount', 'chain_id', 'token_address', 'recipient', 'callback'],
         properties: {
-          usdt_amount: { type: 'number', minimum: 1, description: 'USDT amount to purchase' },
+          amount: { type: 'string', description: 'USDT amount as string' },
+          chain_id: { type: 'integer', description: 'Chain ID (56=BSC, 20=TRC20, 1=ERC20)' },
+          token_address: { type: 'string', description: 'USDT contract address' },
+          recipient: { type: 'string', description: "User's wallet to receive USDT" },
+          callback: { type: 'string', description: 'Webhook URL for order state changes' },
         },
       },
       response: {
@@ -18,35 +26,53 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            data: {
-              type: 'object',
-              properties: {
-                id: { type: 'number' },
-                payment_code: { type: 'string' },
-                checkout_url: { type: 'string' },
-                form_fields: { type: 'object' },
-                quote: { type: 'object' },
-              },
-            },
+            data: { type: 'object', additionalProperties: true },
           },
         },
       },
     },
-  }, async (req, reply) => {
-    const { usdt_amount } = req.body;
+  }, handleDeposit);
 
-    if (!usdt_amount || usdt_amount <= 0) {
-      return reply.status(400).send({ success: false, error: 'usdt_amount must be a positive number' });
-    }
-
-    const data = await createBuyOrder(usdt_amount);
-    reply.send({ success: true, data });
-  });
+  app.post<{ Body: WithdrawalRequest }>('/withdrawal', {
+    schema: {
+      tags: ['Orders'],
+      summary: 'Create a withdrawal order (sell USDT) — stub, logic incomplete',
+      body: {
+        type: 'object',
+        required: ['amount', 'chain_id', 'token_address', 'callback', 'payment_info'],
+        properties: {
+          amount: { type: 'string', description: 'USDT amount as string' },
+          chain_id: { type: 'integer' },
+          token_address: { type: 'string' },
+          callback: { type: 'string' },
+          payment_info: {
+            type: 'object',
+            required: ['bank_id', 'full_name', 'account_type', 'account_number'],
+            properties: {
+              bank_id: { type: 'string', description: 'Bank name (MBBank, Techcombank, etc.)' },
+              full_name: { type: 'string', description: 'Account holder name (no accents)' },
+              account_type: { type: 'integer' },
+              account_number: { type: 'string' },
+            },
+          },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'object', additionalProperties: true },
+          },
+        },
+      },
+    },
+  }, handleWithdrawal);
 
   app.get<{ Params: { payment_code: string } }>('/:payment_code', {
     schema: {
       tags: ['Orders'],
-      summary: 'Get order status by payment code (poll for payment confirmation)',
+      summary: 'Get order status by payment code',
       params: {
         type: 'object',
         properties: {
@@ -58,24 +84,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            data: {
-              type: 'object',
-              properties: {
-                id: { type: 'number' },
-                payment_code: { type: 'string' },
-                payment_status: { type: 'string' },
-                direction: { type: 'string' },
-                usdt_amount: { type: 'number' },
-                rate: { type: 'number' },
-                net_vnd: { type: 'number' },
-                fee_vnd: { type: 'number' },
-                fee_rate: { type: 'number' },
-                checkout_url: { type: 'string' },
-                vnd_received: { type: 'number' },
-                payment_confirmed_at: { type: 'string' },
-                created_at: { type: 'string' },
-              },
-            },
+            data: { type: 'object', additionalProperties: true },
           },
         },
         404: {
@@ -87,9 +96,5 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
         },
       },
     },
-  }, async (req, reply) => {
-    const order = await getOrderByCode(req.params.payment_code);
-    if (!order) return reply.status(404).send({ success: false, error: 'Order not found' });
-    reply.send({ success: true, data: order });
-  });
+  }, handleGetOrder);
 }

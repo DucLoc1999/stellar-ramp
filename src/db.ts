@@ -1,6 +1,7 @@
 import Knex from 'knex';
 import path from 'path';
 import fs from 'fs';
+import { databaseConfig } from './config/database';
 
 const sslEnabled = process.env.DB_SSL !== 'false';
 
@@ -10,32 +11,34 @@ const migrationSource = {
   getMigrations(): Promise<string[]> {
     const dir = path.join(__dirname, 'migrations');
     const files = fs.readdirSync(dir)
-      .filter(f => f.endsWith('.js'))
+      .filter(f => /\.(js|ts)$/.test(f) && !f.endsWith('.d.ts'))
       .sort()
-      .map(f => f.replace(/\.js$/, '.ts'));
-    return Promise.resolve(files);
+      .map(f => f.replace(/\.(js|ts)$/, '.ts'));
+    return Promise.resolve([...new Set(files)]);
   },
   getMigrationName(migration: string): string {
     return migration;
   },
   getMigration(migration: string): Promise<{ up: (knex: Knex.Knex) => Promise<void>; down: (knex: Knex.Knex) => Promise<void> }> {
-    const jsFile = path.join(__dirname, 'migrations', migration.replace(/\.ts$/, '.js'));
-    return Promise.resolve(require(jsFile));
+    const base = migration.replace(/\.ts$/, '');
+    const jsFile = path.join(__dirname, 'migrations', base + '.js');
+    const tsFile = path.join(__dirname, 'migrations', base + '.ts');
+    return Promise.resolve(require(fs.existsSync(jsFile) ? jsFile : tsFile));
   },
 };
 
 const db = Knex({
   client: 'pg',
   connection: {
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    user: process.env.DB_USER ?? 'postgres',
-    password: process.env.DB_PASSWORD ?? '',
-    database: process.env.DB_NAME ?? 'orbitlabs',
-    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+    host: databaseConfig.host,
+    port: databaseConfig.port,
+    user: databaseConfig.user,
+    password: databaseConfig.password,
+    database: databaseConfig.database,
+    ssl: databaseConfig.ssl,
   },
   pool: { min: 2, max: 10 },
-  searchPath: [process.env.DB_SCHEMA ?? 'payment_svc', 'public'],
+  searchPath: [databaseConfig.schema, 'public'],
   migrations: { migrationSource },
 });
 

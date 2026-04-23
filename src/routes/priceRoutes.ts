@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getRate } from '../services/priceService';
+import { handleGetRate } from '../controllers/priceController';
 
 export async function priceRoutes(app: FastifyInstance): Promise<void> {
   app.get('/usdt_vnd', {
@@ -17,12 +17,5 @@ export async function priceRoutes(app: FastifyInstance): Promise<void> {
         },
       },
     },
-  }, async (_req, reply) => {
-    const rate = await getRate();
-    reply.send({
-      created_at: rate.updated_at,
-      buy: rate.buy_price,
-      sell: rate.sell_price,
-    });
-  });
+  }, handleGetRate);
 }
