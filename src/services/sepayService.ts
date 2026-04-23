@@ -1,50 +1,45 @@
+import db from '../db';
 import { findPendingOrderByCode, confirmPayment } from './orderService';
 
-export interface SepayIpnPayload {
-  timestamp: number;
-  notification_type: string;
-  order: {
-    id: string;
-    order_id: string;
-    order_status: string;
-    order_currency: string;
-    order_amount: string;
-    order_invoice_number: string;
-    custom_data: unknown[];
-    user_agent: string;
-    ip_address: string;
-    order_description: string;
-  };
-  transaction: {
-    id: string;
-    payment_method: string;
-    transaction_id: string;
-    transaction_type: string;
-    transaction_date: string;
-    transaction_status: string;
-    transaction_amount: string;
-    transaction_currency: string;
-  };
-  customer: {
-    id: string;
-    customer_id: string;
-  };
+export interface SepayWebhookPayload {
+  id: number;
+  gateway: string;
+  transactionDate: string;
+  accountNumber: string;
+  code: string | null;
+  content: string;
+  transferType: 'in' | 'out';
+  transferAmount: number;
+  accumulated: number;
+  subAccount: string | null;
+  referenceCode: string;
+  description: string;
 }
 
-export async function handleSepayIpn(payload: SepayIpnPayload): Promise<void> {
-  if (payload.notification_type !== 'ORDER_PAID') return;
-  if (payload.order.order_status !== 'CAPTURED') return;
-  if (payload.transaction.transaction_status !== 'APPROVED') return;
+export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<void> {
+  if (!payload.gateway || !payload.id) return;
+  if (payload.transferType !== 'in') return;
 
-  const payment_code = payload.order.order_invoice_number;
-  const order = await findPendingOrderByCode(payment_code);
+  const existing = await db('webhook_logs')
+    .where({ sepay_transaction_id: payload.id })
+    .first();
+  if (existing) return;
+
+  await db('webhook_logs').insert({
+    sepay_transaction_id: payload.id,
+    body: JSON.stringify(payload),
+  });
+
+  if (!payload.code) return;
+
+  const order = await findPendingOrderByCode(payload.code);
   if (!order) return;
 
-  const vnd_received = Math.round(Number(payload.transaction.transaction_amount));
+  if (payload.transferAmount < order.net_vnd) return;
 
   await confirmPayment({
-    payment_code,
-    sepay_transaction_id: payload.transaction.transaction_id,
-    vnd_received,
+    payment_code: payload.code,
+    sepay_transaction_id: String(payload.id),
+    vnd_received: payload.transferAmount,
   });
 }

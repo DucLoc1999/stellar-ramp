@@ -35,3 +35,4 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
+    command: tail -f /dev/null  # Thêm dòng này để "treo" container

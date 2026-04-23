@@ -28,7 +28,7 @@ npm run start      # Run production build
 - `GET /health` — Health check
 - `/api/rate/*` — Price engine
 - `/api/orders/*` — Order management
-- `/config/*` — Admin API (requires `ADMIN_API_KEY`)
+- `/config/*` — configuration API 
 - `/api/webhooks/sepay` — SePay IPN (requires `SEPAY_KEY`)
 
 ## Env Variables
