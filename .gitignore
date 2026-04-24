@@ -14,4 +14,4 @@ node_modules/
 skills-lock.json
 .agent/
 .agents/
-docs/
+# docs/

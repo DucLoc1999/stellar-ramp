@@ -30,7 +30,10 @@ export async function updateConfig(
   changedBy = 'admin',
 ): Promise<void> {
   const old = cache.get(key);
-  await db('config').where({ key }).update({ value });
+  await db('config')
+    .insert({ key, value })
+    .onConflict('key')
+    .merge({ value });
   cache.set(key, value);
 
   if (key.startsWith('fee_rate')) {
