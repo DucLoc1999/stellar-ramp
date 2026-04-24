@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Web**: Fastify 4
 - **DB**: PostgreSQL via Knex 3 (`pg` driver)
 - **Payments**: `sepay-pg-node` (SePay sandbox/prod PG integration)
+- **Queue**: kafkajs (Kafka)
+- **Blockchain**: `@stellar/stellar-sdk` (Stellar network)
 
 ## Docker
 
@@ -19,6 +21,7 @@ Production image uses multi-stage build (builder → production). Migration runs
 npm run dev              # tsx watch — restarts on file changes
 npm run build            # tsc → dist/
 npm run start            # node dist/server.js
+npm run worker:disburse  # Kafka consumer for USDT disbursement
 npm run migrate          # knex migrate:latest --knexfile src/knexfile.ts
 npm run migrate:rollback # knex migrate:rollback --knexfile src/knexfile.ts
 npx tsc --noEmit         # type-check without emitting
@@ -42,78 +45,121 @@ No lint, test, or format scripts are configured.
 
 | Prefix | Route File | Handler File | Auth |
 |---|---|---|---|
+| `/admin` | `routes/adminRoutes.ts` | `controllers/adminController.ts` | JWT |
 | `/api/rate` | `routes/priceRoutes.ts` | `controllers/priceController.ts` | None |
-| `/config` | `routes/configRoutes.ts` | `controllers/configController.ts` | None |
+| `/config` | `routes/configRoutes.ts` | `controllers/configController.ts` | JWT (write) |
 | `/api/orders` | `routes/orderRoutes.ts` | `controllers/orderController.ts` | None |
 | `/api/webhooks` | `routes/webhookRoutes.ts` | `controllers/webhookController.ts` | Apikey |
 
+**Workers:**
+- `src/workers/disburseWorker.ts` — consumes Kafka `DISBURSE_CRYPTO` topic, executes Stellar payment, updates order state
+
 **Layers:**
 - `controllers/` — request handlers, delegate to services
-- `services/` — business logic (unchanged)
+- `services/` — business logic
 - `models/types.ts` — shared interfaces (OrderState, DepositRequest, etc.)
 - `routes/` — Fastify route registration + JSON Schema
-- `middlewares/` — errorHandler, sepayAuth
+- `middlewares/` — errorHandler, sepayAuth, adminAuth
 
 **API docs** served at `/docs` (Swagger UI).
 
-**Data flow for a deposit (buy USDT):**
-1. Client hits `POST /api/orders/deposit` with `{ amount, chain_id, token_address, recipient, callback }`
-2. `orderService.createDeposit()` → `priceService.getQuote('buy')` → `binanceService` (Binance P2P, 30 s cache) + `configService` (spread/fee from DB)
-3. `orderService` → `sepayPgService.createCheckoutSession()` → SePay SDK returns `checkout_url` + `form_fields`
-4. Order saved to DB with `payment_status: 'pending'`, `order_state: 1 (CREATED)`. Callback fired.
-5. Client receives checkout URL / QR code / bank info. Can also poll `GET /api/orders/:payment_code`.
-6. SePay detects bank deposit → fires `POST /api/webhooks/sepay` → `sepayService.handleSepayWebhook()` matches `code` to `payment_code`, deduplicates via `webhook_logs`, validates `transferAmount >= net_vnd`, sets `payment_received` + `order_state: 2 (PROCESSING)`. Callback fired to client's `callback` URL.
-7. External system handles actual USDT transfer and updates order state to COMPLETED via `updateOrderState()`.
+## Data Flow: Deposit (Buy USDT)
 
-**Data flow for a withdrawal (sell USDT):**
-1. Client hits `POST /api/orders/withdrawal` with `{ amount, chain_id, token_address, callback, payment_info }` — saves order with bank details, `order_state: 1 (CREATED)`. Full processing logic TBD.
+1. Client → `POST /api/orders/deposit` with `{ amount, chain_id, token_address, recipient, callback }`
+2. `orderService.createDeposit()` → `priceService.getQuote('buy')` → `binanceService` + `configService`
+3. Order saved to DB with `payment_status: 'pending'`, `order_state: 1 (CREATED)`. Callback fired.
+4. Client receives payment_code (e.g., `USDT247-A3F8B2C1`), checkout URL / QR code / bank info
+5. User transfers VND to SePay bank with content = `payment_code`
+6. SePay → `POST /api/webhooks/sepay` → `sepayService.handleSepayWebhook()` matches `code`, validates amount
+7. `orderService.confirmPayment()` → updates to `payment_received`, `order_state: 2 (PROCESSING)`, emits `DISBURSE_CRYPTO` to Kafka
+8. **disburseWorker** consumes Kafka, executes Stellar payment from hot wallet to `recipient`
+9. On success: updates `order_state: 3 (COMPLETED)`, emits `ORDER_PAID` to Kafka
+10. Callback POSTed to client's `callback` URL
 
-**Order states:** 1=Created, 2=Processing, 3=Completed, 4=Failed, 5=Cancelled
+## Data Flow: Withdrawal (Sell USDT)
 
-**Callback webhooks:** When `order_state` changes, the service POSTs `{ id, topic: "order.state.change", ts, payload: { order_id, old_order_state, new_order_state } }` to the order's `callback` URL (best-effort, 8 s timeout).
+1. Client → `POST /api/orders/withdrawal` with `{ amount, chain_id, token_address, callback, payment_info }`
+2. Order saved with bank details, `order_state: 1 (CREATED)`. Callback fired.
+3. External system sends USDT to hot wallet, then calls webhook/updateOrderState
+4. On completion: updates `order_state: 3 (COMPLETED)`, processes VND payout (TBD)
 
-**Key services:**
-- `binanceService.ts` — fetches median of top-5 Binance P2P listings (BUY + SELL sides separately), 30 s in-memory TTL cache, returns stale on failure
-- `configService.ts` — reads `config` table into a `Map` cache; `updateConfig()` writes through to DB and cache; logs `fee_rate_*` changes to `fee_audit_log`
-- `priceService.ts` — combines binance prices + spreads into buy/sell rates; computes full quotes with fees
-- `sepayPgService.ts` — thin wrapper around `SePayPgClient`; `createCheckoutSession()` calls `initCheckoutUrl()` + `initOneTimePaymentFields()`
-- `orderService.ts` — `createDeposit()` (buy USDT: quote + SePay checkout + save), `createWithdrawal()` (sell USDT: quote + save, logic TBD), `confirmPayment()` (marks `payment_received`, transitions to PROCESSING state, fires callback), `updateOrderState()` (generic state transition + callback)
-- `callbackService.ts` — `fireCallback(url, orderId, oldState, newState)` — best-effort POST to client's callback URL with order state change event
-- `sepayService.ts` — webhook handler: deduplicates via `webhook_logs` table, filters `transferType === 'in'`, matches `code` to `payment_code`, validates `transferAmount >= net_vnd`, calls `confirmPayment()`
+## Order States
 
-**DB singleton**: `src/db.ts` — shared Knex instance, pool min:2/max:10. Import as `import db from '../db'`.
+| State | Name |
+|-------|------|
+| 1 | CREATED |
+| 2 | PROCESSING |
+| 3 | COMPLETED |
+| 4 | FAILED |
+| 5 | CANCELLED |
 
-**Migrations**: `src/migrations/` numbered `000_` through `005_`. Knex config in `src/knexfile.ts` (dual-export: `export default` + `module.exports` for CLI compatibility). In production, migrations run automatically via `db.migrate.latest()` in the Fastify `onReady` hook — no separate migration step needed. A custom `migrationSource` in `src/db.ts` maps `.ts` names (stored in DB) to compiled `.js` files in `dist/migrations/`.
+## Callback Webhooks
+
+When `order_state` changes, POST to client's callback URL:
+```json
+{
+  "id": "order_id",
+  "topic": "order.state.change",
+  "ts": 1714034400000,
+  "payload": {
+    "order_id": 1,
+    "old_order_state": 1,
+    "new_order_state": 2
+  }
+}
+```
+Best-effort, 8s timeout.
+
+## Key Services
+
+- `binanceService.ts` — Binance P2P median price, 30s cache
+- `configService.ts` — config table cache, fee audit log
+- `priceService.ts` — quote calculation with spreads/fees
+- `sepayPgService.ts` — SePay checkout session
+- `orderService.ts` — deposit/withdrawal creation, confirmPayment, updateOrderState, triggerDisburse
+- `queueService.ts` — Kafka producer: emitDisburseCrypto, emitOrderPaid
+- `stellarService.ts` — Stellar payment: initStellarServer, loadHotWallet, disburseUSDT
+- `encryptionService.ts` — AES-256-GCM encrypt/decrypt for wallet secrets
+- `callbackService.ts` — webhook callback to client
+- `sepayService.ts` — webhook handler, deduplication
+
+## Key Tables
+
+- `orders` — order records
+- `config` — runtime config (spreads, fee rates)
+- `webhook_logs` — deduplication
+- `fee_audit_log` — fee change audit
+- `system_wallets` — encrypted Stellar hot wallet
+
+## DB Singleton
+
+`src/db.ts` — shared Knex instance, pool min:2/max:10. Import as `import db from '../db'`.
+
+## Migrations
+
+`src/migrations/` — numbered `000_` through `007_`. Dual .ts/.js handling in dev/prod via `src/db.ts` migrationSource.
 
 ## Env / Secrets
 
-All env vars loaded via `import 'dotenv/config'` in `src/server.ts` (via app.ts). See `.env.example` for the full list. Critical:
+All via `import 'dotenv/config'`. See `.env.example`:
 
-- `SEPAY_KEY` — used by `sepayPgService` (SDK `secret_key`) for creating checkout sessions.
-- `SEPAY_WEBHOOK_API_KEY` — used by `sepayAuth` middleware to validate the `Authorization: Apikey` header on incoming webhooks. If unset, all webhook requests return 401.
-- `SEPAY_ENV` — `sandbox` (default) or `production`.
-
-## Config Table
-
-Runtime-tunable values stored in the `config` DB table (key/value strings):
-
-| Key | Default | Effect |
-|---|---|---|
-| `spread_buy` | `50` | VND added to Binance mid for buy rate |
-| `spread_sell` | `50` | VND subtracted from Binance mid for sell rate |
-| `fee_rate_buy` | `0.008` | 0.8% fee on buy orders |
-| `fee_rate_sell` | `0.008` | 0.8% fee on sell orders |
-
-Public endpoint `GET /config/fees` reads these. Changes to `fee_rate_*` are automatically logged to `fee_audit_log`.
+| Variable | Description |
+|---|---|
+| `SEPAY_KEY` | SePay SDK secret_key |
+| `SEPAY_WEBHOOK_API_KEY` | Webhook auth (Apikey header) |
+| `SEPAY_ENV` | sandbox/production |
+| `KAFKA_BROKERS` | Kafka address:port |
+| `KAFKA_CLIENT_ID` | Kafka client ID |
+| `KAFKA_DISBURSE_TOPIC` | Default: disburse_crypto |
+| `KAFKA_ORDER_PAID_TOPIC` | Default: order_paid |
+| `STELLAR_NETWORK` | testnet/public |
+| `STELLAR_HOT_WALLET_NAME` | Default: stellar_hot_wallet |
+| `STELLAR_HOT_WALLET_ENCRYPTION_KEY` | 32+ char key for AES-256-GCM |
 
 ## Payment Code
 
-Orders use `USDT247-<8-char-alphanumeric>` as unique identifier (stored as `payment_code`). This is also the `order_invoice_number` sent to SePay SDK, and what SePay echoes back in the webhook `code` field (auto-detected from transfer description).
+`USDT247-<8-char>` — unique order identifier. Used as SePay transfer description.
 
-## tsconfig Notes
+## tsconfig
 
-`module: "ES2022"` + `moduleResolution: "Bundler"` — required for top-level `await` in `src/server.ts` to type-check. `tsx` handles this at runtime regardless. Build output goes to `dist/`.
-
-## Notes
-
-- `package.json` must have `"type": "commonjs"` for Node to load `dist/` as CJS.
+`module: "ES2022"` + `moduleResolution: "Bundler"`. Build output to `dist/`. `package.json` must have `"type": "commonjs"`.
