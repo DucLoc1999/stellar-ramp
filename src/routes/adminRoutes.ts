@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { handleGetStats, handleLogin } from '../controllers/adminController';
+import { handleGetStats, handleLogin, handleRotateCallbackSecret } from '../controllers/adminController';
 import { adminAuth } from '../middlewares/adminAuth';
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
@@ -35,5 +35,31 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleGetStats as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
+
+  app.patch('/callback-secret', {
+    preHandler: adminAuth,
+    schema: {
+      tags: ['Admin'],
+      summary: 'Rotate callback signature secret',
+      security: [{ BearerAuth: [] }],
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['secret'],
+        properties: {
+          secret: { type: 'string', minLength: 32, description: 'New secret (min 32 chars)' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'object' },
+          },
+        },
+      },
+    },
+  }, handleRotateCallbackSecret as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 }
 

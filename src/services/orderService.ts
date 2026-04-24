@@ -8,6 +8,42 @@ import { OrderState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
+interface OrderRow {
+  id: number;
+  payment_code: string;
+  direction: 'buy' | 'sell';
+  usdt_amount: string | number;
+  rate: string | number;
+  net_vnd: string | number;
+  fee_rate: string | number;
+  fee_vnd: string | number;
+  order_state: number;
+  payment_status: string;
+  transaction_hash: string | null;
+  error_message: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export function formatOrderResponse(order: OrderRow) {
+  return {
+    id: order.id,
+    payment_code: order.payment_code,
+    direction: order.direction,
+    usdt_amount: typeof order.usdt_amount === 'string' ? parseFloat(order.usdt_amount) : order.usdt_amount,
+    rate: typeof order.rate === 'string' ? Number(order.rate) : order.rate,
+    net_vnd: typeof order.net_vnd === 'string' ? Number(order.net_vnd) : order.net_vnd,
+    fee_rate: typeof order.fee_rate === 'string' ? parseFloat(order.fee_rate) : order.fee_rate,
+    fee_vnd: typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd,
+    order_state: order.order_state,
+    payment_status: order.payment_status ?? 'pending',
+    transaction_hash: order.transaction_hash ?? null,
+    error_message: order.error_message ?? null,
+    created_at: order.created_at?.toISOString(),
+    updated_at: order.updated_at?.toISOString(),
+  };
+}
+
 function generatePaymentCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = 'USDT247-';
@@ -147,4 +183,112 @@ export async function createWithdrawal(req: WithdrawalRequest) {
     fee_vnd: quote.fee_vnd,
     order_state: OrderState.CREATED,
   };
+}
+
+interface CancelResult {
+  data?: {
+    payment_code: string;
+    order_state: number;
+    cancelled_at: string;
+  };
+  error?: string;
+}
+
+export async function cancelOrder(paymentCode: string, reason?: string): Promise<CancelResult> {
+  const order = await db('orders').where({ payment_code: paymentCode }).first();
+
+  if (!order) {
+    return { error: 'ORDER_NOT_FOUND' };
+  }
+
+  const currentState = order.order_state || 0;
+
+  if (currentState === OrderState.CANCELLED || currentState === OrderState.COMPLETED || currentState === OrderState.FAILED) {
+    return { error: 'CANCEL_NOT_ALLOWED' };
+  }
+
+  if (currentState === OrderState.PROCESSING) {
+    if (order.sepay_transaction_id || order.payment_status === 'payment_received') {
+      return { error: 'CANCEL_NOT_ALLOWED' };
+    }
+  }
+
+  await db('orders')
+    .where({ payment_code: paymentCode })
+    .update({
+      order_state: OrderState.CANCELLED,
+      cancelled_at: db.fn.now(),
+      cancel_reason: reason || null,
+    });
+
+  const [updated] = await db('orders').where({ payment_code: paymentCode }).returning('*');
+
+  if (order.callback) {
+    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED).catch(() => {});
+  }
+
+  return {
+    data: {
+      payment_code: updated.payment_code,
+      order_state: updated.order_state,
+      cancelled_at: updated.cancelled_at?.toISOString() || new Date().toISOString(),
+    },
+  };
+}
+
+interface ChainEventParams {
+  paymentCode: string;
+  txHash: string;
+  amount: string;
+  address: string;
+  chainId: number;
+}
+
+interface ChainEventResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function handleChainEvent(params: ChainEventParams): Promise<ChainEventResult> {
+  const { paymentCode, txHash, amount, address, chainId } = params;
+
+  const order = await db('orders').where({ payment_code: paymentCode }).first();
+
+  if (!order) {
+    return { success: false, error: 'Order not found' };
+  }
+
+  if (order.direction !== 'sell') {
+    return { success: false, error: 'Chain webhook only applicable to sell orders' };
+  }
+
+  if (order.recipient && order.recipient !== address) {
+    return { success: false, error: 'Address mismatch' };
+  }
+
+  const orderUsdtAmount = typeof order.usdt_amount === 'string' 
+    ? parseFloat(order.usdt_amount) 
+    : order.usdt_amount;
+  const webhookAmount = parseFloat(amount);
+  const tolerance = 0.01;
+  const percentDiff = Math.abs(webhookAmount - orderUsdtAmount) / orderUsdtAmount;
+
+  if (percentDiff > tolerance) {
+    return { success: false, error: 'Amount mismatch' };
+  }
+
+  const oldState = order.order_state || 0;
+
+  await db('orders')
+    .where({ payment_code: paymentCode })
+    .update({
+      order_state: OrderState.PROCESSING,
+      transaction_hash: txHash,
+    });
+
+  if (order.callback) {
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => {});
+  }
+
+  return { success: true };
 }

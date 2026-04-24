@@ -3,8 +3,11 @@ import {
   createDeposit,
   createWithdrawal,
   getOrderByCode,
+  cancelOrder,
+  formatOrderResponse,
 } from '../services/orderService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
+import { createErrorReply, ErrorCodes } from '../middlewares/errorHandler';
 
 export async function handleDeposit(
   req: FastifyRequest<{ Body: DepositRequest }>,
@@ -12,11 +15,10 @@ export async function handleDeposit(
 ): Promise<void> {
   const amount = Number(req.body.amount);
   if (!amount || amount <= 0) {
-    reply.status(400).send({ success: false, error: 'amount must be a positive number' });
-    return;
+    return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
   }
   const data = await createDeposit(req.body);
-  reply.send({ success: true, data });
+  return reply.send({ success: true, data });
 }
 
 export async function handleWithdrawal(
@@ -25,11 +27,10 @@ export async function handleWithdrawal(
 ): Promise<void> {
   const amount = Number(req.body.amount);
   if (!amount || amount <= 0) {
-    reply.status(400).send({ success: false, error: 'amount must be a positive number' });
-    return;
+    return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
   }
   const data = await createWithdrawal(req.body);
-  reply.send({ success: true, data });
+  return reply.send({ success: true, data });
 }
 
 export async function handleGetOrder(
@@ -38,8 +39,23 @@ export async function handleGetOrder(
 ): Promise<void> {
   const order = await getOrderByCode(req.params.payment_code);
   if (!order) {
-    reply.status(404).send({ success: false, error: 'Order not found' });
-    return;
+    return createErrorReply(reply, 'ORDER_NOT_FOUND', 'Order not found', req.id);
   }
-  reply.send({ success: true, data: order });
+  return reply.send({ success: true, data: formatOrderResponse(order) });
+}
+
+export async function handleCancel(
+  req: FastifyRequest<{ Params: { payment_code: string }; Body: { reason?: string } }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const result = await cancelOrder(req.params.payment_code, req.body?.reason);
+  
+  if (result.error) {
+    const errorCode = result.error === 'ORDER_NOT_FOUND' ? 'ORDER_NOT_FOUND' : 
+                      result.error === 'CANCEL_NOT_ALLOWED' ? 'CANCEL_NOT_ALLOWED' : 
+                      'INTERNAL_ERROR';
+    return createErrorReply(reply, errorCode, result.error, req.id);
+  }
+  
+  return reply.send({ success: true, data: result.data });
 }

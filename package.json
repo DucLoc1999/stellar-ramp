@@ -18,7 +18,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
-    "@stellar/stellar-sdk": "^15.0.1",
+    "@stellar/stellar-sdk": "^15.0.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.8.5",
     "kafkajs": "^2.2.4",

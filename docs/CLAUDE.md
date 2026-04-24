@@ -1,78 +1,54 @@
-# CLAUDE.md
+# Payment Service API Documentation
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Overview
 
-## What This Project Is
+Fastify + TypeScript backend for USDT trading (buy/sell USDT for Vietnamese Dong). Integrates with SePay for fiat payments and Stellar for crypto disbursement.
 
-A Fastify + TypeScript backend that powers a **Telegram bot for USDT trading** (buy/sell USDT for Vietnamese Dong). The bot integrates with an external payment API (HSPay) and uses grammY for Telegram bot interactions. All UI messages are in Vietnamese.
+## Base URL
 
-## Commands
+```
+http://localhost:3000
+```
+
+## API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/orders/deposit` | Partner-App-Key | Create buy order (USDT) |
+| POST | `/api/orders/withdrawal` | Partner-App-Key | Create sell order (USDT) |
+| GET | `/api/orders/:payment_code` | Partner-App-Key | Get order status |
+| POST | `/api/orders/:payment_code/cancel` | Partner-App-Key | Cancel order |
+| POST | `/api/webhooks/sepay` | SePay API key | Deposit confirmation |
+| POST | `/api/webhooks/chain` | Chain signature | Withdrawal completion |
+| POST | `/admin/login` | None | Admin JWT login |
+| GET | `/admin/stats` | JWT | Order statistics |
+| PATCH | `/admin/callback-secret` | JWT | Rotate callback secret |
+
+## Authentication
+
+### Partner-App-Key (Client → Service)
 
 ```bash
-# Development (hot-reload)
-npm run dev
-
-# Build
-npm run build
-
-# Lint / format
-npm run lint
-npm run lint:fix
-npm run format
-
-# Database migrations
-npm run migrate:latest      # run all pending migrations
-npm run migrate:rollback    # rollback last migration
-npm run migrate:status      # check migration status
-npm run migrate:make        # create new migration file
-
-# Docker (production)
-make up          # start
-make down        # stop
-make rebuild     # rebuild and start
-make logs        # follow logs
-make health      # check /health endpoint
+Partner-App-Key: <your-key>
 ```
 
-## Architecture
+### Webhook Signature (Provider → Service)
 
-**Request flow:** `Routes → Controllers → Services → DB (MySQL via Knex)`
-
-Active HTTP routes:
-- `POST /api/telegram/webhook` — receives updates from Telegram (grammY processes them)
-- `POST /api/webhooks/payment` — receives payment status updates from HSPay
-
-Disabled routes (security): `teleUserRoutes`, `paymentRoutes` — their logic is available via the service layer, but HTTP access is intentionally blocked.
-
-**Key services:**
-- `src/services/telegramService.ts` — core bot logic: all conversation states, message templates (Vietnamese), grammY bot setup
-- `src/services/paymentService.ts` — order creation/management via HSPay API
-- `src/services/webhookService.ts` — handles HSPay payment status callbacks, notifies users
-- `src/services/kycService.ts` — KYC verification flow
-- `src/services/s3Service.ts` — S3 upload for KYC images
-- `src/services/fptAiVisionService.ts` — AI vision for ID document verification
-- `src/services/notificationQueueService.ts` — queues Telegram notifications
-- `src/services/referralService.ts` — referral system
-
-**Database:** MySQL via Knex. Migrations live in `database/migrations/`. The app auto-runs migrations on startup (`src/utils/migrationRunner.ts`). Tables: `tele_users`, `orders`, `payment_information`, `kyc`, `referrals`.
-
-**Config:** `src/config/app.ts` (app/telegram/pay config from env), `src/config/database.ts` (mysql2 pool), `src/config/knex.ts` (knex instance for migrations and queries).
-
-**Observability:** Sentry (`src/instrument.ts` imported first in `server.ts`), pino with rolling file logs in `./logs/`.
-
-## Environment Variables
-
-Required in `.env`:
-```
-NODE_ENV, PORT, HOST, LOG_LEVEL
-DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
-TELEGRAM_BOT_TOKEN
-API_PAY, PARTNER_APP_KEY
-WEBHOOK_PUBLIC_KEY
-SENTRY_DSN (optional)
-URL_SWAGGER (optional, for prod Swagger URL)
+```bash
+X-Webhook-Timestamp: <unix-ms>
+X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body)
 ```
 
-## Deployment
+### Callback Signature (Service → Client)
 
-Docker-based. The app connects to an **external MySQL** at a configured host (not a docker-compose service). Port defaults to `8001` in production. The `docker-entrypoint.sh` handles file permissions for mounted `./logs` and `./data` volumes.
+Service signs callbacks with `X-Signature` header. Client verifies using shared `CALLBACK_SIGNATURE_SECRET`.
+
+See `docs/API_INTEGRATION.md` for full details including:
+- Request/response examples
+- Error codes
+- Callback verification code
+- State machine diagram
+
+## Swagger UI
+
+Full API docs at: `http://localhost:3000/docs`

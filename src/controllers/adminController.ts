@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import db from '../db';
 import { verifyAdminCredentials } from '../services/adminService';
 import { signJwt } from '../utils/jwt';
+import { createErrorReply } from '../middlewares/errorHandler';
 
 const ACCESS_TOKEN_TTL_SEC = Number(process.env.ADMIN_JWT_TTL_SEC ?? 60 * 60 * 12); // 12h
 
@@ -95,5 +96,59 @@ export async function handleGetStats(
       by_direction: byDirection,
     },
   });
+}
+
+export async function handleRotateCallbackSecret(
+  req: FastifyRequest<{ Body: { secret: string } }>,
+  reply: FastifyReply,
+) {
+  const { secret } = req.body ?? ({} as any);
+
+  if (!secret || typeof secret !== 'string') {
+    return createErrorReply(reply, 'VALIDATION_ERROR', 'Secret is required', req.id);
+  }
+
+  if (secret.length < 32) {
+    return createErrorReply(reply, 'VALIDATION_ERROR', 'Secret must be at least 32 characters', req.id);
+  }
+
+  const now = new Date();
+  const existing = await db('config').where({ key: 'callback_secret_rotated_at' }).first();
+
+  if (existing) {
+    const rotatedAt = new Date(existing.value);
+    const windowMs = 5 * 60 * 1000;
+    if (now.getTime() - rotatedAt.getTime() < windowMs) {
+      return createErrorReply(reply, 'VALIDATION_ERROR', 'Rotation already in progress. Wait 5 minutes.', req.id);
+    }
+
+    await db('config').where({ key: 'callback_secret_previous' }).update({ value: existing.value });
+  }
+
+  await db('config')
+    .insert({
+      key: 'callback_secret_current',
+      value: secret,
+    })
+    .onConflict('key')
+    .merge();
+
+  await db('config')
+    .insert({
+      key: 'callback_secret_previous',
+      value: existing?.value || secret,
+    })
+    .onConflict('key')
+    .merge();
+
+  await db('config')
+    .insert({
+      key: 'callback_secret_rotated_at',
+      value: now.toISOString(),
+    })
+    .onConflict('key')
+    .merge();
+
+  return reply.send({ success: true, data: { rotated_at: now.toISOString() } });
 }
 

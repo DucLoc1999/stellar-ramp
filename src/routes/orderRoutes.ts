@@ -1,12 +1,14 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import {
   type DepositRequest,
   type WithdrawalRequest,
 } from '../services/orderService';
-import { handleDeposit, handleWithdrawal, handleGetOrder } from '../controllers/orderController';
+import { handleDeposit, handleWithdrawal, handleGetOrder, handleCancel } from '../controllers/orderController';
+import { partnerAuth } from '../middlewares/partnerAuth';
 
 export async function orderRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: DepositRequest }>('/deposit', {
+    preHandler: partnerAuth,
     schema: {
       tags: ['Orders'],
       summary: 'Create a deposit order (buy USDT) — returns SePay checkout session',
@@ -34,6 +36,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
   }, handleDeposit);
 
   app.post<{ Body: WithdrawalRequest }>('/withdrawal', {
+    preHandler: partnerAuth,
     schema: {
       tags: ['Orders'],
       summary: 'Create a withdrawal order (sell USDT) — stub, logic incomplete',
@@ -70,6 +73,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
   }, handleWithdrawal);
 
   app.get<{ Params: { payment_code: string } }>('/:payment_code', {
+    preHandler: partnerAuth,
     schema: {
       tags: ['Orders'],
       summary: 'Get order status by payment code',
@@ -97,4 +101,47 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleGetOrder);
+
+  app.post<{ Params: { payment_code: string }; Body: { reason?: string } }>('/:payment_code/cancel', {
+    preHandler: partnerAuth,
+    schema: {
+      tags: ['Orders'],
+      summary: 'Cancel an order by payment code',
+      params: {
+        type: 'object',
+        properties: {
+          payment_code: { type: 'string', description: 'e.g. USDT247-A3F8B2C1' },
+        },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string', description: 'Optional cancellation reason' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'object' },
+          },
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'object' },
+          },
+        },
+        409: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'object' },
+          },
+        },
+      },
+    },
+  }, handleCancel);
 }
