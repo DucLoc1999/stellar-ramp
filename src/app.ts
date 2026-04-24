@@ -14,7 +14,7 @@ import { testConnection } from './config/database';
 import { logger } from './config/logger';
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: logger });
+  const app = Fastify({ logger: true });
 
   await app.register(cors);
 
