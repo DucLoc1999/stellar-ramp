@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "worker:disburse": "tsx src/workers/disburseWorker.ts",
     "migrate": "tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts",
     "migrate:prod": "node node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js",
     "migrate:rollback": "tsx node_modules/.bin/knex migrate:rollback --knexfile src/knexfile.ts",
@@ -17,8 +18,10 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
+    "@stellar/stellar-sdk": "^15.0.1",
     "dotenv": "^16.4.5",
     "fastify": "^5.8.5",
+    "kafkajs": "^2.2.4",
     "knex": "^3.1.0",
     "pg": "^8.13.0",
     "sepay-pg-node": "^1.0.0"

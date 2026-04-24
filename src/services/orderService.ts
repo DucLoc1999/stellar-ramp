@@ -2,6 +2,7 @@ import db from '../db';
 import { getQuote } from './priceService';
 import { createCheckoutSession } from './sepayPgService';
 import { fireCallback } from './callbackService';
+import { triggerDisburse } from './stellarService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
 import { OrderState } from '../models/types';
 
@@ -42,6 +43,12 @@ export async function confirmPayment(params: {
   sepay_transaction_id: string;
   vnd_received: number;
 }) {
+  const order = await db('orders')
+    .where({ payment_code: params.payment_code, payment_status: 'pending' })
+    .first();
+
+  if (!order) return;
+
   await db('orders')
     .where({ payment_code: params.payment_code, payment_status: 'pending' })
     .update({
@@ -50,6 +57,20 @@ export async function confirmPayment(params: {
       vnd_received: params.vnd_received,
       payment_confirmed_at: db.fn.now(),
     });
+
+  const oldState = order.order_state || 0;
+  await db('orders')
+    .where({ payment_code: params.payment_code })
+    .update({ order_state: OrderState.PROCESSING });
+
+  if (order.direction === 'buy' && order.recipient) {
+    const usdtAmount = order.usdt_amount.toString();
+    await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code);
+  }
+
+  if (order.callback) {
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => {});
+  }
 }
 
 export async function findPendingOrderByCode(payment_code: string) {
