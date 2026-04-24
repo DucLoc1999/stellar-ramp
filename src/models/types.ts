@@ -54,6 +54,40 @@ export interface QuoteResult {
   note: string;
 }
 
+export interface Usdt247Timestamp {
+  seconds: number;
+  nanos: number;
+}
+
+export interface Usdt247Order {
+  id: string;
+  user_id: string | null;
+  order_type: 'buy' | 'sell';
+  external_id: string | null;
+  code: string;
+  provider: string;
+  callback: string;
+  amount: number;
+  currency: string;
+  rate: number;
+  token_address: string;
+  recipient: string | null;
+  chain_id: number;
+  partner_id: string | null;
+  state: number;
+  processing_state: number | null;
+  body: Record<string, unknown> | null;
+  pay_data: Record<string, unknown> | null;
+  payment_info: Record<string, unknown> | null;
+  expired_at: Usdt247Timestamp;
+  created_at: Usdt247Timestamp;
+  updated_at: Usdt247Timestamp;
+  client_ip: string | null;
+  outcome: string | null;
+  original_rate: number;
+  total_fee_vnd: number;
+}
+
 export interface SepayWebhookPayload {
   id: number;
   gateway: string;

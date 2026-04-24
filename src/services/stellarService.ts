@@ -108,12 +108,11 @@ export async function disburseUSDT(
   orderId: number,
   recipientPublicKey: string,
   amount: string,
-  paymentCode: string
+  paymentCode: string,
+  tokenAddress: string
 ): Promise<DisburseResult> {
-  const asset = new Asset(
-    'USDT',
-    'GA7ZFU7U6PRFWNK6W7LQHLQR7YLSSXEGQBWAFWALNQI2E3CR4THWIC2D'
-  );
+  const assetCode = process.env.STELLAR_ASSET_CODE || 'USDC';
+  const asset = new Asset(assetCode, tokenAddress);
 
   const result = await executeStellarPayment(recipientPublicKey, amount, asset);
 
@@ -140,12 +139,14 @@ export async function triggerDisburse(
   orderId: number,
   recipientPublicKey: string,
   amount: string,
-  paymentCode: string
+  paymentCode: string,
+  tokenAddress: string
 ): Promise<void> {
   await emitDisburseCrypto({
     orderId,
     recipientPublicKey,
     amount,
     paymentCode,
+    tokenAddress,
   });
 }

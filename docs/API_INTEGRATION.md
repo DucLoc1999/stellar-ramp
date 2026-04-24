@@ -22,10 +22,14 @@ Endpoints requiring auth:
 - `GET /api/orders/:payment_code`
 - `POST /api/orders/:payment_code/cancel`
 
-### Provider → Service Webhooks (Webhook Signature)
+### Provider → Service Webhooks
 
-SePay and Chain webhooks use signature-based auth:
+**SePay** uses API key auth:
+```
+Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
+```
 
+**Chain** uses HMAC signature auth:
 ```
 X-Webhook-Timestamp: <unix-ms>
 X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)

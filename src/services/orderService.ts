@@ -2,8 +2,8 @@ import db from '../db';
 import { getQuote } from './priceService';
 import { createCheckoutSession } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse } from './stellarService';
-import type { DepositRequest, WithdrawalRequest } from '../models/types';
+import { triggerDisburse, loadHotWallet } from './stellarService';
+import type { DepositRequest, WithdrawalRequest, Usdt247Order, Usdt247Timestamp } from '../models/types';
 import { OrderState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
@@ -21,27 +21,63 @@ interface OrderRow {
   payment_status: string;
   transaction_hash: string | null;
   error_message: string | null;
+  chain_id: number;
+  token_address: string;
+  recipient: string | null;
+  callback: string;
+  payment_info: Record<string, unknown> | null;
+  expired_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
 
-export function formatOrderResponse(order: OrderRow) {
+function toTimestamp(date: Date): Usdt247Timestamp {
+  const ms = date.getTime();
   return {
-    id: order.id,
-    payment_code: order.payment_code,
-    direction: order.direction,
-    usdt_amount: typeof order.usdt_amount === 'string' ? parseFloat(order.usdt_amount) : order.usdt_amount,
-    rate: typeof order.rate === 'string' ? Number(order.rate) : order.rate,
-    net_vnd: typeof order.net_vnd === 'string' ? Number(order.net_vnd) : order.net_vnd,
-    fee_rate: typeof order.fee_rate === 'string' ? parseFloat(order.fee_rate) : order.fee_rate,
-    fee_vnd: typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd,
-    order_state: order.order_state,
-    payment_status: order.payment_status ?? 'pending',
-    transaction_hash: order.transaction_hash ?? null,
-    error_message: order.error_message ?? null,
-    created_at: order.created_at?.toISOString(),
-    updated_at: order.updated_at?.toISOString(),
+    seconds: Math.floor(ms / 1000),
+    nanos: (ms % 1000) * 1_000_000,
   };
+}
+
+function toApiOrder(
+  order: OrderRow,
+  overrides?: Partial<Pick<Usdt247Order, 'body' | 'pay_data'>>
+): Usdt247Order {
+  const rate = typeof order.rate === 'string' ? Number(order.rate) : order.rate;
+  const feeVnd = typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd;
+  const expiry = order.expired_at ?? new Date(order.created_at.getTime() + 30 * 60 * 1000);
+  return {
+    id: String(order.id),
+    user_id: null,
+    order_type: order.direction,
+    external_id: null,
+    code: order.payment_code,
+    provider: order.direction === 'buy' ? 'sepay' : 'chain',
+    callback: order.callback,
+    amount: typeof order.usdt_amount === 'string' ? parseFloat(order.usdt_amount) : order.usdt_amount,
+    currency: 'USDT',
+    rate,
+    token_address: order.token_address,
+    recipient: order.recipient ?? null,
+    chain_id: order.chain_id,
+    partner_id: null,
+    state: order.order_state,
+    processing_state: null,
+    body: overrides?.body ?? null,
+    pay_data: overrides?.pay_data ?? null,
+    payment_info: order.payment_info ?? null,
+    expired_at: toTimestamp(expiry),
+    created_at: toTimestamp(order.created_at),
+    updated_at: toTimestamp(order.updated_at),
+    client_ip: null,
+    outcome: null,
+    original_rate: rate,
+    total_fee_vnd: feeVnd,
+  };
+}
+
+export function formatOrderResponse(order: OrderRow): Usdt247Order {
+  return toApiOrder(order);
 }
 
 function generatePaymentCode(): string {
@@ -101,7 +137,7 @@ export async function confirmPayment(params: {
 
   if (order.direction === 'buy' && order.recipient) {
     const usdtAmount = order.usdt_amount.toString();
-    await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code);
+    await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address);
   }
 
   if (order.callback) {
@@ -117,9 +153,10 @@ export async function getOrderByCode(payment_code: string) {
   return db('orders').where({ payment_code }).first();
 }
 
-export async function createDeposit(req: DepositRequest) {
+export async function createDeposit(req: DepositRequest): Promise<Usdt247Order> {
   const usdtAmount = Number(req.amount);
   const result = await createBuyOrder(usdtAmount);
+  const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
   const [order] = await db('orders')
     .where({ payment_code: result.payment_code })
     .update({
@@ -128,32 +165,21 @@ export async function createDeposit(req: DepositRequest) {
       recipient: req.recipient,
       callback: req.callback,
       order_state: OrderState.CREATED,
+      expired_at: expiredAt,
     })
     .returning('*');
   fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => {});
-  return {
-    id: order.id,
-    payment_code: order.payment_code,
-    checkout_url: result.checkout_url,
-    direction: 'buy',
-    usdt_amount: result.quote.usdt_amount,
-    rate: result.quote.rate,
-    net_vnd: result.quote.net_vnd,
-    fee_rate: result.quote.fee_rate,
-    fee_vnd: result.quote.fee_vnd,
-    order_state: OrderState.CREATED,
+  return toApiOrder(order as OrderRow, {
     pay_data: { qr_code: result.checkout_url },
     body: { bankInfo: result.form_fields },
-    form_fields: result.form_fields,
-    quote: result.quote,
-    recipient: req.recipient,
-  };
+  });
 }
 
-export async function createWithdrawal(req: WithdrawalRequest) {
+export async function createWithdrawal(req: WithdrawalRequest): Promise<Usdt247Order> {
   const usdtAmount = Number(req.amount);
   const quote = await getQuote('sell', usdtAmount);
   const payment_code = generatePaymentCode();
+  const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
   const [order] = await db('orders')
     .insert({
       payment_code,
@@ -168,21 +194,16 @@ export async function createWithdrawal(req: WithdrawalRequest) {
       chain_id: req.chain_id,
       token_address: req.token_address,
       callback: req.callback,
-      payment_info: req.payment_info,
+      payment_info: JSON.stringify(req.payment_info),
+      expired_at: expiredAt,
     })
     .returning('*');
   fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => {});
-  return {
-    id: order.id,
-    payment_code: order.payment_code,
-    direction: 'sell',
-    usdt_amount: quote.usdt_amount,
-    rate: quote.rate,
-    net_vnd: quote.net_vnd,
-    fee_rate: quote.fee_rate,
-    fee_vnd: quote.fee_vnd,
-    order_state: OrderState.CREATED,
-  };
+
+  const hotWallet = await loadHotWallet();
+  return toApiOrder(order as OrderRow, {
+    pay_data: { address: hotWallet.publicKey },
+  });
 }
 
 interface CancelResult {

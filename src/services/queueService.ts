@@ -5,6 +5,7 @@ export interface DisburseCryptoEvent {
   recipientPublicKey: string;
   amount: string;
   paymentCode: string;
+  tokenAddress: string;
 }
 
 export interface OrderPaidEvent {
