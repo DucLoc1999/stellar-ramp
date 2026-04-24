@@ -9,6 +9,9 @@ dist/
 # dependencies
 node_modules/
 
+# logs
+logs/
+
 # agent
 .claude/
 skills-lock.json
