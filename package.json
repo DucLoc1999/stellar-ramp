@@ -8,7 +8,7 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "vite build --config vite.config.server.ts",
-    "start": "node --experimental-sqlite dist/server/production.mjs",
+    "start": "npm run build && node --experimental-sqlite dist/server/node-build.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
