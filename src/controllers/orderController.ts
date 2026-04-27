@@ -59,3 +59,27 @@ export async function handleCancel(
   
   return reply.send({ success: true, data: result.data });
 }
+
+export async function handleOrderSuccess(
+  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const url = `${process.env.DOMAIN || ''}/order/${req.params.payment_code}?payment=success`;
+  return reply.redirect(url, 302);
+}
+
+export async function handleOrderError(
+  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const url = `${process.env.DOMAIN || ''}/order/${req.params.payment_code}?payment=error`;
+  return reply.redirect(url, 302);
+}
+
+export async function handleOrderCancel(
+  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const url = `${process.env.DOMAIN || ''}/order/${req.params.payment_code}?payment=cancel`;
+  return reply.redirect(url, 302);
+}

@@ -1,3 +1,4 @@
+import { getConfig } from './configService';
 import { SePayPgClient } from 'sepay-pg-node';
 
 const sepayClient = new SePayPgClient({
@@ -9,12 +10,13 @@ const sepayClient = new SePayPgClient({
 export interface CheckoutSession {
   checkout_url: string;
   form_fields: Record<string, unknown>;
+  qr_url: string;
 }
 
-export function createCheckoutSession(params: {
+export async function createCheckoutSession(params: {
   payment_code: string;
   net_vnd: number;
-}): CheckoutSession {
+}): Promise<CheckoutSession> {
   const domain = (process.env.DOMAIN ?? '').replace(/\/$/, '');
   const base = domain.startsWith('http') ? domain : `https://${domain}`;
 
@@ -26,10 +28,18 @@ export function createCheckoutSession(params: {
     order_amount: params.net_vnd,
     currency: 'VND',
     order_description: `Thanh toan don hang ${params.payment_code}`,
-    success_url: `${base}/order/${params.payment_code}?payment=success`,
-    error_url: `${base}/order/${params.payment_code}?payment=error`,
-    cancel_url: `${base}/order/${params.payment_code}?payment=cancel`,
+    success_url: `${base}/orders/${params.payment_code}?payment=success`,
+    error_url: `${base}/orders/${params.payment_code}?payment=error`,
+    cancel_url: `${base}/orders/${params.payment_code}?payment=cancel`,
   });
 
-  return { checkout_url, form_fields };
+  const merchantAcc = await getConfig('sepay_merchant_account');
+  const merchantBank = await getConfig('sepay_merchant_bank');
+
+  let qr_url = '';
+  if (merchantAcc && merchantBank) {
+    qr_url = `https://qr.sepay.vn/img?acc=${merchantAcc}&bank=${merchantBank}&amount=${params.net_vnd}&des=${encodeURIComponent(params.payment_code)}`;
+  }
+
+  return { checkout_url, form_fields, qr_url };
 }

@@ -3,7 +3,7 @@ import {
   type DepositRequest,
   type WithdrawalRequest,
 } from '../services/orderService';
-import { handleDeposit, handleWithdrawal, handleGetOrder, handleCancel } from '../controllers/orderController';
+import { handleDeposit, handleWithdrawal, handleGetOrder, handleCancel, handleOrderSuccess, handleOrderError, handleOrderCancel } from '../controllers/orderController';
 import { partnerAuth } from '../middlewares/partnerAuth';
 
 export async function orderRoutes(app: FastifyInstance): Promise<void> {
@@ -170,4 +170,8 @@ properties: {
       },
     },
   }, handleCancel);
+
+  app.get<{ Params: { payment_code: string } }>('/:payment_code/success', handleOrderSuccess);
+  app.get<{ Params: { payment_code: string } }>('/:payment_code/error', handleOrderError);
+  app.get<{ Params: { payment_code: string } }>('/:payment_code/cancel', handleOrderCancel);
 }

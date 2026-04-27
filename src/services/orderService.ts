@@ -128,7 +128,7 @@ function firstInsertedId(result: unknown): number {
 export async function createBuyOrder(usdt_amount: number) {
   const quote = await getQuote('buy', usdt_amount);
   const payment_code = generatePaymentCode();
-  const { checkout_url, form_fields } = createCheckoutSession({
+  const { checkout_url, form_fields, qr_url } = await createCheckoutSession({
     payment_code,
     net_vnd: quote.net_vnd,
   });
@@ -146,7 +146,7 @@ export async function createBuyOrder(usdt_amount: number) {
   });
   const id = firstInsertedId(inserted);
 
-  return { id, payment_code, checkout_url, form_fields, quote };
+  return { id, payment_code, checkout_url, form_fields, qr_url, quote };
 }
 
 export async function confirmPayment(params: {
@@ -318,15 +318,16 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
   };
 }
 
-export async function updateOrderState(paymentCode: string, newState: number): Promise<void> {
+export async function updateOrderState(paymentCode: string, newState: number | string): Promise<void> {
   const order = await db('orders').where({ payment_code: paymentCode }).first();
   if (!order) return;
 
   const oldState = order.order_state || 0;
-  await db('orders').where({ payment_code: paymentCode }).update({ order_state: newState });
+  const stateNum = typeof newState === 'string' ? Number(newState) : newState;
+  await db('orders').where({ payment_code: paymentCode }).update({ order_state: stateNum });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, newState).catch(() => { });
+    fireCallback(order.callback, order.id, oldState, stateNum).catch(() => { });
   }
 }
 
