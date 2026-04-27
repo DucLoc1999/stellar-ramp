@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { buildApp, runMigrations, cleanOrders, destroyDb, db } from './helper';
 import type { FastifyInstance } from 'fastify';
+import { Keypair } from '@stellar/stellar-sdk';
+import { encrypt } from '../src/services/encryptionService';
 
 const DEPOSIT_BODY = {
   amount: '100',
   chain_id: 56,
   token_address: '0x55d398326f99059fF775485246999027B3197955',
-  recipient: '0xTestWallet1234567890abcdef',
+  recipient: '',
   callback: 'https://example.com/webhook',
 };
 
@@ -23,10 +25,27 @@ const WITHDRAWAL_BODY = {
   },
 };
 
+const PARTNER_APP_KEY = process.env.PARTNER_APP_KEY || 'test-partner-key';
+process.env.PARTNER_APP_KEY = PARTNER_APP_KEY;
+const PARTNER_HEADERS = { 'partner-app-key': PARTNER_APP_KEY };
+
 let app: FastifyInstance;
 
 beforeAll(async () => {
+  process.env.STELLAR_HOT_WALLET_ENCRYPTION_KEY =
+    process.env.STELLAR_HOT_WALLET_ENCRYPTION_KEY || '12345678901234567890123456789012';
   await runMigrations();
+  const kp = Keypair.random();
+  await db('system_wallets')
+    .insert({
+      name: process.env.STELLAR_HOT_WALLET_NAME || 'stellar_hot_wallet',
+      public_key: kp.publicKey(),
+      encrypted_secret: encrypt(kp.secret()),
+      network: 'testnet',
+      is_active: true,
+    })
+    .onConflict('name')
+    .merge();
   app = await buildApp();
 });
 
@@ -46,59 +65,61 @@ describe('POST /api/orders/deposit', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
-    expect(body.data.direction).toBe('buy');
-    expect(body.data.payment_code).toMatch(/^USDT247-[A-Z0-9]{8}$/);
-    expect(body.data.order_state).toBe(1);
-    expect(body.data.usdt_amount).toBe(100);
-    expect(body.data.checkout_url).toBeTruthy();
+    expect(body.data.order_type).toBe('buy');
+    expect(body.data.code).toMatch(/^USDT247-[A-Z0-9]{8}$/);
+    expect(body.data.state).toBe(1);
+    expect(body.data.amount).toBe(100);
     expect(body.data.recipient).toBe(DEPOSIT_BODY.recipient);
   });
 
-  it('returns pay_data.qr_code and body.bankInfo', async () => {
+  it('returns pay_data.qr_link (+ qr_code alias) and body.bankInfo', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
 
     const { data } = res.json();
     expect(data.pay_data).toBeDefined();
     expect(data.pay_data.qr_code).toBeTruthy();
+    expect(data.pay_data.qr_link).toBeTruthy();
+    expect(data.pay_data.qr_link).toBe(data.pay_data.qr_code);
     expect(data.body.bankInfo).toBeDefined();
-    expect(data.form_fields).toBeDefined();
   });
 
-  it('returns quote breakdown', async () => {
+  it('returns canonical USDT247 monetary fields', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
 
     const { data } = res.json();
-    expect(data.quote).toBeDefined();
-    expect(data.quote.direction).toBe('buy');
-    expect(data.quote.usdt_amount).toBe(100);
-    expect(data.quote.rate).toBeGreaterThan(0);
-    expect(data.quote.net_vnd).toBeGreaterThan(0);
-    expect(data.quote.fee_vnd).toBeGreaterThan(0);
+    expect(data.amount).toBe(100);
+    expect(data.currency).toBe('USDT');
+    expect(data.rate).toBeGreaterThan(0);
+    expect(data.total_fee_vnd).toBeGreaterThan(0);
   });
 
   it('persists order in DB with new columns', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
 
     const { data } = res.json();
-    const row = await db('orders').where({ payment_code: data.payment_code }).first();
+    const row = await db('orders').where({ payment_code: data.code }).first();
     expect(row).toBeDefined();
     expect(row.chain_id).toBe(56);
     expect(row.token_address).toBe(DEPOSIT_BODY.token_address);
@@ -112,6 +133,7 @@ describe('POST /api/orders/deposit', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: { ...DEPOSIT_BODY, amount: '-5' },
     });
 
@@ -123,6 +145,7 @@ describe('POST /api/orders/deposit', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: { ...DEPOSIT_BODY, amount: '0' },
     });
 
@@ -133,6 +156,7 @@ describe('POST /api/orders/deposit', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: { ...DEPOSIT_BODY, amount: 'abc' },
     });
 
@@ -143,6 +167,7 @@ describe('POST /api/orders/deposit', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: { amount: '100', chain_id: 56 },
     });
 
@@ -157,26 +182,28 @@ describe('POST /api/orders/withdrawal', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/withdrawal',
+      headers: PARTNER_HEADERS,
       payload: WITHDRAWAL_BODY,
     });
 
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
-    expect(data.direction).toBe('sell');
-    expect(data.payment_code).toMatch(/^USDT247-[A-Z0-9]{8}$/);
-    expect(data.order_state).toBe(1);
-    expect(data.usdt_amount).toBe(50);
+    expect(data.order_type).toBe('sell');
+    expect(data.code).toMatch(/^USDT247-[A-Z0-9]{8}$/);
+    expect(data.state).toBe(1);
+    expect(data.amount).toBe(50);
   });
 
   it('persists bank details in DB', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/withdrawal',
+      headers: PARTNER_HEADERS,
       payload: WITHDRAWAL_BODY,
     });
 
     const { data } = res.json();
-    const row = await db('orders').where({ payment_code: data.payment_code }).first();
+    const row = await db('orders').where({ payment_code: data.code }).first();
     expect(row.bank_id).toBe('MBBank');
     expect(row.bank_account_name).toBe('NGUYEN VAN A');
     expect(row.bank_account_no).toBe('1234567890');
@@ -187,6 +214,7 @@ describe('POST /api/orders/withdrawal', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/withdrawal',
+      headers: PARTNER_HEADERS,
       payload: { ...WITHDRAWAL_BODY, amount: '-10' },
     });
 
@@ -198,6 +226,7 @@ describe('POST /api/orders/withdrawal', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/withdrawal',
+      headers: PARTNER_HEADERS,
       payload: noPaymentInfo,
     });
 
@@ -208,6 +237,7 @@ describe('POST /api/orders/withdrawal', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/withdrawal',
+      headers: PARTNER_HEADERS,
       payload: {
         ...WITHDRAWAL_BODY,
         payment_info: { bank_id: 'MBBank' },
@@ -225,19 +255,21 @@ describe('GET /api/orders/:payment_code', () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
-    const code = create.json().data.payment_code;
+    const code = create.json().data.code;
 
     const res = await app.inject({
       method: 'GET',
       url: `/api/orders/${code}`,
+      headers: PARTNER_HEADERS,
     });
 
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
-    expect(data.payment_code).toBe(code);
-    expect(data.order_state).toBe(1);
+    expect(data.code).toBe(code);
+    expect(data.state).toBe(1);
     expect(data.chain_id).toBe(56);
     expect(data.recipient).toBe(DEPOSIT_BODY.recipient);
   });
@@ -246,10 +278,11 @@ describe('GET /api/orders/:payment_code', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/orders/USDT247-ZZZZZZZZ',
+      headers: PARTNER_HEADERS,
     });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe('Order not found');
+    expect(res.json().error?.message).toBe('Order not found');
   });
 });
 
@@ -260,9 +293,12 @@ describe('SePay webhook flow', () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
-    const { payment_code, net_vnd } = create.json().data;
+    const { code } = create.json().data;
+    const createdRow = await db('orders').where({ payment_code: code }).first();
+    const netVnd = Number(createdRow.net_vnd);
 
     const webhookRes = await app.inject({
       method: 'POST',
@@ -275,10 +311,10 @@ describe('SePay webhook flow', () => {
         gateway: 'MBBank',
         transactionDate: '2026-04-22 12:00:00',
         accountNumber: '0123456789',
-        code: payment_code,
-        content: `chuyen tien ${payment_code}`,
+        code,
+        content: `chuyen tien ${code}`,
         transferType: 'in',
-        transferAmount: net_vnd,
+        transferAmount: netVnd,
         accumulated: 10000000,
         subAccount: null,
         referenceCode: 'MB.12345',
@@ -289,29 +325,32 @@ describe('SePay webhook flow', () => {
     expect(webhookRes.statusCode).toBe(200);
     expect(webhookRes.json().success).toBe(true);
 
-    const row = await db('orders').where({ payment_code }).first();
+    const row = await db('orders').where({ payment_code: code }).first();
     expect(row.payment_status).toBe('payment_received');
     expect(row.order_state).toBe(2);
-    expect(Number(row.vnd_received)).toBe(net_vnd);
+    expect(Number(row.vnd_received)).toBe(netVnd);
   });
 
   it('deduplicates — second webhook with same id is ignored', async () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
-    const { payment_code, net_vnd } = create.json().data;
+    const { code } = create.json().data;
+    const createdRow = await db('orders').where({ payment_code: code }).first();
+    const netVnd = Number(createdRow.net_vnd);
 
     const webhookPayload = {
       id: 99002,
       gateway: 'MBBank',
       transactionDate: '2026-04-22 12:00:00',
       accountNumber: '0123456789',
-      code: payment_code,
-      content: `chuyen tien ${payment_code}`,
+      code,
+      content: `chuyen tien ${code}`,
       transferType: 'in',
-      transferAmount: net_vnd,
+      transferAmount: netVnd,
       accumulated: 10000000,
       subAccount: null,
       referenceCode: 'MB.12346',
@@ -331,9 +370,10 @@ describe('SePay webhook flow', () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
-    const { payment_code } = create.json().data;
+    const { code } = create.json().data;
 
     await app.inject({
       method: 'POST',
@@ -344,8 +384,8 @@ describe('SePay webhook flow', () => {
         gateway: 'MBBank',
         transactionDate: '2026-04-22 12:00:00',
         accountNumber: '0123456789',
-        code: payment_code,
-        content: `chuyen tien ${payment_code}`,
+        code,
+        content: `chuyen tien ${code}`,
         transferType: 'in',
         transferAmount: 1000,
         accumulated: 10000000,
@@ -355,7 +395,7 @@ describe('SePay webhook flow', () => {
       },
     });
 
-    const row = await db('orders').where({ payment_code }).first();
+    const row = await db('orders').where({ payment_code: code }).first();
     expect(row.payment_status).toBe('pending');
     expect(row.order_state).toBe(1);
   });
@@ -364,9 +404,12 @@ describe('SePay webhook flow', () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
-    const { payment_code, net_vnd } = create.json().data;
+    const { code } = create.json().data;
+    const createdRow = await db('orders').where({ payment_code: code }).first();
+    const netVnd = Number(createdRow.net_vnd);
 
     await app.inject({
       method: 'POST',
@@ -377,10 +420,10 @@ describe('SePay webhook flow', () => {
         gateway: 'MBBank',
         transactionDate: '2026-04-22 12:00:00',
         accountNumber: '0123456789',
-        code: payment_code,
-        content: `chuyen tien ${payment_code}`,
+        code,
+        content: `chuyen tien ${code}`,
         transferType: 'out',
-        transferAmount: net_vnd,
+        transferAmount: netVnd,
         accumulated: 10000000,
         subAccount: null,
         referenceCode: 'MB.12348',
@@ -388,7 +431,7 @@ describe('SePay webhook flow', () => {
       },
     });
 
-    const row = await db('orders').where({ payment_code }).first();
+    const row = await db('orders').where({ payment_code: code }).first();
     expect(row.payment_status).toBe('pending');
   });
 
@@ -426,13 +469,14 @@ describe('updateOrderState', () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
       payload: DEPOSIT_BODY,
     });
-    const { payment_code } = create.json().data;
+    const { code } = create.json().data;
 
-    await updateOrderState(payment_code, 3);
+    await updateOrderState(code, 3);
 
-    const row = await db('orders').where({ payment_code }).first();
+    const row = await db('orders').where({ payment_code: code }).first();
     expect(row.order_state).toBe(3);
   });
 });

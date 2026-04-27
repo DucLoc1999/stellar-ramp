@@ -12,6 +12,7 @@
     "migrate": "tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts",
     "migrate:prod": "node node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js",
     "migrate:rollback": "tsx node_modules/.bin/knex migrate:rollback --knexfile src/knexfile.ts",
+    "wallet:add": "tsx scripts/add-wallet.ts",
     "test": "vitest run"
   },
   "dependencies": {

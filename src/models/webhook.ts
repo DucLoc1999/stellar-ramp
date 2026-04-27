@@ -1,0 +1,14 @@
+export interface WebhookPayload {
+  order_id: string;
+  old_order_state: number;
+  new_order_state: number;
+  old_order_processing_state?: number;
+  new_order_processing_state?: number;
+}
+
+export interface WebhookEvent {
+  id: string;
+  topic: 'order.state.change';
+  ts: string;
+  payload: WebhookPayload;
+}

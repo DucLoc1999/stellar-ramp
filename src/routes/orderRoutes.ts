@@ -21,6 +21,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           token_address: { type: 'string', description: 'USDT contract address' },
           recipient: { type: 'string', description: "User's wallet to receive USDT" },
           callback: { type: 'string', description: 'Webhook URL for order state changes' },
+          user_id: { type: 'string', description: 'Optional client user ID' },
         },
       },
       response: {
@@ -43,11 +44,12 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       body: {
         type: 'object',
         required: ['amount', 'chain_id', 'token_address', 'callback', 'payment_info'],
-        properties: {
-          amount: { type: 'string', description: 'USDT amount as string' },
+properties: {
+          amount: { type: 'string' },
           chain_id: { type: 'integer' },
           token_address: { type: 'string' },
           callback: { type: 'string' },
+          user_id: { type: 'string' },
           payment_info: {
             type: 'object',
             required: ['bank_id', 'full_name', 'account_type', 'account_number'],
@@ -95,7 +97,15 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            error: { type: 'string' },
+            error: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                message: { type: 'string' },
+                retriable: { type: 'boolean' },
+                trace_id: { type: 'string' },
+              },
+            },
           },
         },
       },
@@ -131,14 +141,30 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            error: { type: 'object' },
+            error: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                message: { type: 'string' },
+                retriable: { type: 'boolean' },
+                trace_id: { type: 'string' },
+              },
+            },
           },
         },
         409: {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
-            error: { type: 'object' },
+            error: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                message: { type: 'string' },
+                retriable: { type: 'boolean' },
+                trace_id: { type: 'string' },
+              },
+            },
           },
         },
       },

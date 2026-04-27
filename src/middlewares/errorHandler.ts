@@ -31,6 +31,8 @@ export const ErrorCodes = {
   AUTH_NOT_CONFIGURED: { code: 'AUTH_NOT_CONFIGURED', statusCode: 503, retriable: true },
   INTERNAL_ERROR: { code: 'INTERNAL_ERROR', statusCode: 500, retriable: true },
   CHAIN_EVENT_MISMATCH: { code: 'CHAIN_EVENT_MISMATCH', statusCode: 400, retriable: false },
+  UNSUPPORTED_TOKEN: { code: 'UNSUPPORTED_TOKEN', statusCode: 400, retriable: false },
+  RECIPIENT_NO_TRUSTLINE: { code: 'RECIPIENT_NO_TRUSTLINE', statusCode: 400, retriable: false },
 } as const;
 
 export function createErrorReply(

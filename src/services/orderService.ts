@@ -2,11 +2,16 @@ import db from '../db';
 import { getQuote } from './priceService';
 import { createCheckoutSession } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, loadHotWallet } from './stellarService';
-import type { DepositRequest, WithdrawalRequest, Usdt247Order, Usdt247Timestamp } from '../models/types';
+import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER } from './stellarService';
+import type { DepositRequest, WithdrawalRequest } from '../models/types';
+import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
 import { OrderState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
+
+function isSupportedToken(tokenAddress: string): boolean {
+  return tokenAddress === SUPPORTED_TOKEN_ISSUER;
+}
 
 interface OrderRow {
   id: number;
@@ -19,16 +24,26 @@ interface OrderRow {
   fee_vnd: string | number;
   order_state: number;
   payment_status: string;
+  processing_state?: number | null;
   transaction_hash: string | null;
   error_message: string | null;
   chain_id: number;
   token_address: string;
   recipient: string | null;
   callback: string;
-  payment_info: Record<string, unknown> | null;
+  payment_info: Usdt247PaymentInfo | Record<string, unknown> | string | null;
+  cancelled_at?: Date | null;
   expired_at: Date | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface CreateOptions {
+  clientIp?: string;
+}
+
+export interface CreateDepositParams extends DepositRequest {
+  _clientIp?: string;
 }
 
 function toTimestamp(date: Date): Usdt247Timestamp {
@@ -41,14 +56,25 @@ function toTimestamp(date: Date): Usdt247Timestamp {
 
 function toApiOrder(
   order: OrderRow,
-  overrides?: Partial<Pick<Usdt247Order, 'body' | 'pay_data'>>
+  overrides?: Partial<Pick<Usdt247Order, 'body' | 'pay_data' | 'user_id' | 'client_ip' | 'outcome'>>
 ): Usdt247Order {
   const rate = typeof order.rate === 'string' ? Number(order.rate) : order.rate;
   const feeVnd = typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd;
   const expiry = order.expired_at ?? new Date(order.created_at.getTime() + 30 * 60 * 1000);
+  let paymentInfo: Usdt247PaymentInfo | null = null;
+  if (order.payment_info && typeof order.payment_info === 'object') {
+    paymentInfo = order.payment_info as Usdt247PaymentInfo;
+  } else if (typeof order.payment_info === 'string') {
+    try {
+      paymentInfo = JSON.parse(order.payment_info) as Usdt247PaymentInfo;
+    } catch {
+      paymentInfo = null;
+    }
+  }
+
   return {
     id: String(order.id),
-    user_id: null,
+    user_id: overrides?.user_id ?? '',
     order_type: order.direction,
     external_id: null,
     code: order.payment_code,
@@ -58,19 +84,19 @@ function toApiOrder(
     currency: 'USDT',
     rate,
     token_address: order.token_address,
-    recipient: order.recipient ?? null,
+    recipient: order.recipient ?? '',
     chain_id: order.chain_id,
-    partner_id: null,
+    partner_id: "1",  // update when have partner assign system
     state: order.order_state,
-    processing_state: null,
+    processing_state: order.processing_state ?? 0,
     body: overrides?.body ?? null,
     pay_data: overrides?.pay_data ?? null,
-    payment_info: order.payment_info ?? null,
+    payment_info: paymentInfo,
     expired_at: toTimestamp(expiry),
     created_at: toTimestamp(order.created_at),
     updated_at: toTimestamp(order.updated_at),
-    client_ip: null,
-    outcome: null,
+    client_ip: overrides?.client_ip ?? '',
+    outcome: overrides?.outcome ?? '',
     original_rate: rate,
     total_fee_vnd: feeVnd,
   };
@@ -87,6 +113,18 @@ function generatePaymentCode(): string {
   return code;
 }
 
+function firstRow<T>(result: T | T[]): T {
+  return (Array.isArray(result) ? result[0] : result) as T;
+}
+
+function firstInsertedId(result: unknown): number {
+  if (Array.isArray(result)) return Number(result[0]);
+  if (typeof result === 'object' && result !== null && 'id' in result) {
+    return Number((result as { id: number | string }).id);
+  }
+  return Number(result);
+}
+
 export async function createBuyOrder(usdt_amount: number) {
   const quote = await getQuote('buy', usdt_amount);
   const payment_code = generatePaymentCode();
@@ -95,7 +133,7 @@ export async function createBuyOrder(usdt_amount: number) {
     net_vnd: quote.net_vnd,
   });
 
-  const [id] = await db('orders').insert({
+  const inserted = await db('orders').insert({
     payment_code,
     checkout_url,
     direction: 'buy',
@@ -106,6 +144,7 @@ export async function createBuyOrder(usdt_amount: number) {
     fee_vnd: quote.fee_vnd,
     payment_status: 'pending',
   });
+  const id = firstInsertedId(inserted);
 
   return { id, payment_code, checkout_url, form_fields, quote };
 }
@@ -141,7 +180,7 @@ export async function confirmPayment(params: {
   }
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => {});
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => { });
   }
 }
 
@@ -153,11 +192,17 @@ export async function getOrderByCode(payment_code: string) {
   return db('orders').where({ payment_code }).first();
 }
 
-export async function createDeposit(req: DepositRequest): Promise<Usdt247Order> {
+export async function createDeposit(
+  req: DepositRequest,
+  options?: CreateOptions
+): Promise<Usdt247Order> {
+  if (!req.token_address || !isSupportedToken(req.token_address)) {
+    throw new Error('UNSUPPORTED_TOKEN');
+  }
   const usdtAmount = Number(req.amount);
   const result = await createBuyOrder(usdtAmount);
   const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
-  const [order] = await db('orders')
+  const updated = await db('orders')
     .where({ payment_code: result.payment_code })
     .update({
       chain_id: req.chain_id,
@@ -168,19 +213,28 @@ export async function createDeposit(req: DepositRequest): Promise<Usdt247Order> 
       expired_at: expiredAt,
     })
     .returning('*');
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => {});
+  const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
+  fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => { });
   return toApiOrder(order as OrderRow, {
-    pay_data: { qr_code: result.checkout_url },
+    user_id: req.user_id ?? '',
+    client_ip: options?.clientIp ?? '',
+    pay_data: { qr_link: result.checkout_url, qr_code: result.checkout_url },
     body: { bankInfo: result.form_fields },
   });
 }
 
-export async function createWithdrawal(req: WithdrawalRequest): Promise<Usdt247Order> {
+export async function createWithdrawal(
+  req: WithdrawalRequest,
+  options?: CreateOptions
+): Promise<Usdt247Order> {
+  if (!req.token_address || !isSupportedToken(req.token_address)) {
+    throw new Error('UNSUPPORTED_TOKEN');
+  }
   const usdtAmount = Number(req.amount);
   const quote = await getQuote('sell', usdtAmount);
   const payment_code = generatePaymentCode();
   const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
-  const [order] = await db('orders')
+  const inserted = await db('orders')
     .insert({
       payment_code,
       direction: 'sell',
@@ -194,14 +248,20 @@ export async function createWithdrawal(req: WithdrawalRequest): Promise<Usdt247O
       chain_id: req.chain_id,
       token_address: req.token_address,
       callback: req.callback,
+      bank_id: req.payment_info.bank_id,
+      bank_account_name: req.payment_info.full_name,
+      bank_account_no: req.payment_info.account_number,
       payment_info: JSON.stringify(req.payment_info),
       expired_at: expiredAt,
     })
     .returning('*');
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => {});
+  const order = firstRow<OrderRow>(inserted as OrderRow | OrderRow[]);
+  fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => { });
 
   const hotWallet = await loadHotWallet();
   return toApiOrder(order as OrderRow, {
+    user_id: req.user_id ?? '',
+    client_ip: options?.clientIp ?? '',
     pay_data: { address: hotWallet.publicKey },
   });
 }
@@ -242,10 +302,11 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
       cancel_reason: reason || null,
     });
 
-  const [updated] = await db('orders').where({ payment_code: paymentCode }).returning('*');
+  const updatedRows = await db('orders').where({ payment_code: paymentCode }).returning('*');
+  const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED).catch(() => {});
+    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED).catch(() => { });
   }
 
   return {
@@ -255,6 +316,18 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
       cancelled_at: updated.cancelled_at?.toISOString() || new Date().toISOString(),
     },
   };
+}
+
+export async function updateOrderState(paymentCode: string, newState: number): Promise<void> {
+  const order = await db('orders').where({ payment_code: paymentCode }).first();
+  if (!order) return;
+
+  const oldState = order.order_state || 0;
+  await db('orders').where({ payment_code: paymentCode }).update({ order_state: newState });
+
+  if (order.callback) {
+    fireCallback(order.callback, order.id, oldState, newState).catch(() => { });
+  }
 }
 
 interface ChainEventParams {
@@ -287,8 +360,8 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
     return { success: false, error: 'Address mismatch' };
   }
 
-  const orderUsdtAmount = typeof order.usdt_amount === 'string' 
-    ? parseFloat(order.usdt_amount) 
+  const orderUsdtAmount = typeof order.usdt_amount === 'string'
+    ? parseFloat(order.usdt_amount)
     : order.usdt_amount;
   const webhookAmount = parseFloat(amount);
   const tolerance = 0.01;
@@ -308,7 +381,7 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
     });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => {});
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => { });
   }
 
   return { success: true };

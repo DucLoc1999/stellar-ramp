@@ -4,6 +4,14 @@ export interface AppConfig {
   nodeEnv: string;
 }
 
+export type {
+  Usdt247Order,
+  Usdt247PayData,
+  Usdt247PaymentInfo,
+  Usdt247ResponseBody,
+  Usdt247Timestamp,
+} from './usdt247';
+
 export const OrderState = {
   CREATED: 1,
   PROCESSING: 2,
@@ -18,6 +26,7 @@ export interface DepositRequest {
   token_address: string;
   recipient: string;
   callback: string;
+  user_id?: string;
 }
 
 export interface WithdrawalRequest {
@@ -31,6 +40,7 @@ export interface WithdrawalRequest {
     account_type: number;
     account_number: string;
   };
+  user_id?: string;
 }
 
 export interface RateResult {
@@ -52,40 +62,6 @@ export interface QuoteResult {
   fee_vnd: number;
   net_vnd: number;
   note: string;
-}
-
-export interface Usdt247Timestamp {
-  seconds: number;
-  nanos: number;
-}
-
-export interface Usdt247Order {
-  id: string;
-  user_id: string | null;
-  order_type: 'buy' | 'sell';
-  external_id: string | null;
-  code: string;
-  provider: string;
-  callback: string;
-  amount: number;
-  currency: string;
-  rate: number;
-  token_address: string;
-  recipient: string | null;
-  chain_id: number;
-  partner_id: string | null;
-  state: number;
-  processing_state: number | null;
-  body: Record<string, unknown> | null;
-  pay_data: Record<string, unknown> | null;
-  payment_info: Record<string, unknown> | null;
-  expired_at: Usdt247Timestamp;
-  created_at: Usdt247Timestamp;
-  updated_at: Usdt247Timestamp;
-  client_ip: string | null;
-  outcome: string | null;
-  original_rate: number;
-  total_fee_vnd: number;
 }
 
 export interface SepayWebhookPayload {

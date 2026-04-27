@@ -1,16 +1,6 @@
 import crypto from 'crypto';
 import db from '../db';
-
-interface CallbackPayload {
-  id: string;
-  topic: 'order.state.change';
-  ts: string;
-  payload: {
-    order_id: string;
-    old_order_state: number;
-    new_order_state: number;
-  };
-}
+import type { WebhookEvent } from '../models/webhook';
 
 const TIMEOUT_MS = parseInt(process.env.CALLBACK_TIMEOUT_MS || '8000');
 const MAX_RETRIES = parseInt(process.env.CALLBACK_RETRY_COUNT || '3');
@@ -27,9 +17,9 @@ interface DualSecretConfig {
 async function getDualSecretConfig(): Promise<DualSecretConfig> {
   try {
     const rows = await db('config').whereIn('key', ['callback_secret_current', 'callback_secret_previous', 'callback_secret_rotated_at']).select('key', 'value');
-    
+
     const config: DualSecretConfig = { current: null, previous: null, rotatedAt: null };
-    
+
     for (const row of rows) {
       if (row.key === 'callback_secret_current') config.current = row.value;
       if (row.key === 'callback_secret_previous') config.previous = row.value;
@@ -37,11 +27,17 @@ async function getDualSecretConfig(): Promise<DualSecretConfig> {
     }
 
     if (!config.current) {
+      console.log('[Callback] No DB secret found, falling back to CALLBACK_SIGNATURE_SECRET env var');
       config.current = SIGNATURE_SECRET || null;
     }
-    
+
+    if (!config.current) {
+      console.warn('[Callback] WARNING: No signing secret configured — callbacks will be sent unsigned');
+    }
+
     return config;
-  } catch {
+  } catch (err) {
+    console.error('[Callback] getDualSecretConfig DB error, falling back to env var:', err);
     return { current: SIGNATURE_SECRET || null, previous: null, rotatedAt: null };
   }
 }
@@ -55,7 +51,7 @@ function computeSignature(secret: string, timestamp: string, body: string): stri
 
 async function postCallback(
   callbackUrl: string,
-  payload: CallbackPayload,
+  payload: WebhookEvent,
   attempt: number
 ): Promise<{ success: boolean; status?: number; error?: string }> {
   const body = JSON.stringify(payload);
@@ -63,9 +59,11 @@ async function postCallback(
   const secretConfig = await getDualSecretConfig();
   
   let signature: string | null = null;
-  
+
   if (secretConfig.current) {
     signature = computeSignature(secretConfig.current, timestamp, body);
+  } else {
+    console.warn(`[Callback] No secret available — sending unsigned callback to ${callbackUrl}`);
   }
 
   const headers: Record<string, string> = {
@@ -77,6 +75,8 @@ async function postCallback(
     headers['X-Signature'] = signature;
   }
 
+  console.log(`[Callback] POST attempt=${attempt} url=${callbackUrl} timestamp=${timestamp} hasSig=${!!signature} orderId=${payload.payload?.order_id} topic=${payload.topic}`);
+
   try {
     const response = await fetch(callbackUrl, {
       method: 'POST',
@@ -86,12 +86,18 @@ async function postCallback(
     });
 
     if (response.ok) {
+      console.log(`[Callback] SUCCESS status=${response.status} url=${callbackUrl}`);
       return { success: true, status: response.status };
     }
 
-    return { success: false, status: response.status, error: `HTTP ${response.status}` };
+    let responseBody = '';
+    try { responseBody = await response.text(); } catch { /* ignore */ }
+    console.error(`[Callback] FAILED status=${response.status} url=${callbackUrl} body=${responseBody}`);
+    return { success: false, status: response.status, error: `HTTP ${response.status}: ${responseBody}` };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
+    const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+    console.error(`[Callback] FETCH ERROR url=${callbackUrl} timeout=${isTimeout} error=${error}`);
     return { success: false, error };
   }
 }
@@ -100,9 +106,13 @@ export async function fireCallback(
   callbackUrl: string,
   orderId: string | number,
   oldState: number,
-  newState: number
+  newState: number,
+  states?: {
+    oldProcessingState?: number | null;
+    newProcessingState?: number | null;
+  }
 ): Promise<void> {
-  const payload: CallbackPayload = {
+  const payload: WebhookEvent = {
     id: String(orderId),
     topic: 'order.state.change',
     ts: new Date().toISOString(),
@@ -113,7 +123,16 @@ export async function fireCallback(
     },
   };
 
+  if (typeof states?.oldProcessingState === 'number') {
+    payload.payload.old_order_processing_state = states.oldProcessingState;
+  }
+  if (typeof states?.newProcessingState === 'number') {
+    payload.payload.new_order_processing_state = states.newProcessingState;
+  }
+
   if (!callbackUrl) return;
+
+  console.log(`[Callback] fireCallback orderId=${orderId} url=${callbackUrl} stateChange=${oldState}→${newState}`);
 
   let logId: number | undefined;
 
@@ -135,6 +154,7 @@ export async function fireCallback(
   let lastError: string = '';
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    console.log(`[Callback] Attempt ${attempt}/${MAX_RETRIES} for order ${orderId}`);
     const result = await postCallback(callbackUrl, payload, attempt);
 
     if (logId) {

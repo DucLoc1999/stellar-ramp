@@ -24,6 +24,7 @@ npm run start            # node dist/server.js
 npm run worker:disburse  # Kafka consumer for USDT disbursement
 npm run migrate          # knex migrate:latest --knexfile src/knexfile.ts
 npm run migrate:rollback # knex migrate:rollback --knexfile src/knexfile.ts
+npm run wallet:add       # add/update wallet (scripts/add-wallet.ts)
 npx tsc --noEmit         # type-check without emitting
 ```
 
