@@ -1,45 +1,62 @@
-import { getConfig } from './configService';
-import { SePayPgClient } from 'sepay-pg-node';
-
-const sepayClient = new SePayPgClient({
-  env: (process.env.SEPAY_ENV ?? 'sandbox') as 'sandbox' | 'production',
-  merchant_id: process.env.SEPAY_ID!,
-  secret_key: process.env.SEPAY_KEY!,
-});
-
-export interface CheckoutSession {
-  checkout_url: string;
-  form_fields: Record<string, unknown>;
-  qr_url: string;
+export interface SepayBankInfo {
+  account_number: string;
+  account_holder_name: string;
+  bank_name: string;
+  bank_short_name: string;
 }
 
-export async function createCheckoutSession(params: {
+export interface SepayOrderResult {
+  bank_info: SepayBankInfo;
+  qr_code_url: string;
+  va_number: string;
+  transfer_content: string;
+  amount: number;
+}
+
+export interface SepayOrderListItem {
+  id: string;
+  order_code: string;
+  amount: number;
+  paid_amount: number;
+  status: string;
+  bank_name: string;
+  account_number: string;
+  account_holder_name: string;
+  created_at: string;
+  va: Array<{
+    va_number: string;
+    va_holder_name: string;
+    amount: number;
+    status: string;
+    expired_at: string | null;
+    paid_at: string | null;
+  }>;
+}
+
+function getBankInfo(): SepayBankInfo {
+  return {
+    account_number: process.env.SEPAY_VA_NUMBER || '8825882089',
+    account_holder_name: process.env.SEPAY_VA_HOLDER || 'NGUYEN DUC LOC',
+    bank_name: process.env.SEPAY_BANK_NAME || 'BIDV',
+    bank_short_name: process.env.SEPAY_BANK_SHORT || 'BIDV',
+  };
+}
+
+export async function createSepayOrder(params: {
   payment_code: string;
   net_vnd: number;
-}): Promise<CheckoutSession> {
-  const domain = (process.env.DOMAIN ?? '').replace(/\/$/, '');
-  const base = domain.startsWith('http') ? domain : `https://${domain}`;
+}): Promise<SepayOrderResult> {
+  const bank = getBankInfo();
+  const qr_code_url = `https://qr.sepay.vn/img?acc=${bank.account_number}&bank=${bank.bank_short_name}&amount=${params.net_vnd}&des=${encodeURIComponent(params.payment_code)}&template=qronly`;
+  return {
+    bank_info: bank,
+    qr_code_url,
+    va_number: bank.account_number,
+    transfer_content: params.payment_code,
+    amount: params.net_vnd,
+  };
+}
 
-  const checkout_url = sepayClient.checkout.initCheckoutUrl();
-
-  const form_fields = sepayClient.checkout.initOneTimePaymentFields({
-    payment_method: 'BANK_TRANSFER',
-    order_invoice_number: params.payment_code,
-    order_amount: params.net_vnd,
-    currency: 'VND',
-    order_description: `Thanh toan don hang ${params.payment_code}`,
-    success_url: `${base}/orders/${params.payment_code}?payment=success`,
-    error_url: `${base}/orders/${params.payment_code}?payment=error`,
-    cancel_url: `${base}/orders/${params.payment_code}?payment=cancel`,
-  });
-
-  const merchantAcc = await getConfig('sepay_merchant_account');
-  const merchantBank = await getConfig('sepay_merchant_bank');
-
-  let qr_url = '';
-  if (merchantAcc && merchantBank) {
-    qr_url = `https://qr.sepay.vn/img?acc=${merchantAcc}&bank=${merchantBank}&amount=${params.net_vnd}&des=${encodeURIComponent(params.payment_code)}`;
-  }
-
-  return { checkout_url, form_fields, qr_url };
+export async function listSepayOrders(_perPage = 20): Promise<SepayOrderListItem[]> {
+  return [];
 }

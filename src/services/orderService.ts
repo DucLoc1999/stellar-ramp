@@ -1,6 +1,6 @@
 import db from '../db';
 import { getQuote } from './priceService';
-import { createCheckoutSession } from './sepayPgService';
+import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER } from './stellarService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
@@ -36,6 +36,9 @@ interface OrderRow {
   expired_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  va_number: string | null;
+  transfer_content: string | null;
+  amount: string | number | null;
 }
 
 export interface CreateOptions {
@@ -89,7 +92,15 @@ function toApiOrder(
     partner_id: "1",  // update when have partner assign system
     state: order.order_state,
     processing_state: order.processing_state ?? 0,
-    body: overrides?.body ?? null,
+    body: overrides?.body ?? {
+      bankInfo: {
+        bankName: order.va_number ? '' : '',
+        bankAccountName: '',
+        bankAccountNumber: order.va_number ?? '',
+        transferContent: order.transfer_content ?? '',
+        vaAmount: order.amount ? Number(order.amount) : 0,
+      },
+    },
     pay_data: overrides?.pay_data ?? null,
     payment_info: paymentInfo,
     expired_at: toTimestamp(expiry),
@@ -107,9 +118,9 @@ export function formatOrderResponse(order: OrderRow): Usdt247Order {
 }
 
 function generatePaymentCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = 'USDT247-';
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  const chars = '0123456789';
+  let code = 'DH';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
 }
 
@@ -128,14 +139,13 @@ function firstInsertedId(result: unknown): number {
 export async function createBuyOrder(usdt_amount: number) {
   const quote = await getQuote('buy', usdt_amount);
   const payment_code = generatePaymentCode();
-  const { checkout_url, form_fields, qr_url } = await createCheckoutSession({
+  const sepayOrder = await createSepayOrder({
     payment_code,
     net_vnd: quote.net_vnd,
   });
 
   const inserted = await db('orders').insert({
     payment_code,
-    checkout_url,
     direction: 'buy',
     usdt_amount: quote.usdt_amount,
     rate: quote.rate,
@@ -143,10 +153,13 @@ export async function createBuyOrder(usdt_amount: number) {
     fee_rate: quote.fee_rate,
     fee_vnd: quote.fee_vnd,
     payment_status: 'pending',
+    va_number: sepayOrder.va_number,
+    transfer_content: sepayOrder.transfer_content,
+    amount: sepayOrder.amount,
   });
   const id = firstInsertedId(inserted);
 
-  return { id, payment_code, checkout_url, form_fields, qr_url, quote };
+  return { id, payment_code, sepayOrder, quote };
 }
 
 export async function confirmPayment(params: {
@@ -211,6 +224,9 @@ export async function createDeposit(
       callback: req.callback,
       order_state: OrderState.CREATED,
       expired_at: expiredAt,
+      va_number: result.sepayOrder.va_number,
+      transfer_content: result.sepayOrder.transfer_content,
+      amount: result.sepayOrder.amount,
     })
     .returning('*');
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
@@ -218,8 +234,16 @@ export async function createDeposit(
   return toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
-    pay_data: { qr_link: result.checkout_url, qr_code: result.checkout_url },
-    body: { bankInfo: result.form_fields },
+    body: {
+      qr_link: result.sepayOrder.qr_code_url,
+      bankInfo: {
+        bankName: result.sepayOrder.bank_info.bank_name,
+        bankAccountName: result.sepayOrder.bank_info.account_holder_name,
+        bankAccountNumber: result.sepayOrder.bank_info.account_number,
+        transferContent: result.sepayOrder.transfer_content,
+        vaAmount: result.sepayOrder.amount,
+      },
+    },
   });
 }
 

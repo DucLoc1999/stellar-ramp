@@ -8,6 +8,8 @@ export interface Usdt247BankInfo {
   bankAccountNumber?: string;
   bankId?: string;
   bankName?: string;
+  transferContent?: string;
+  vaAmount?: number;
 }
 
 export interface Usdt247ResponseBody {
@@ -20,6 +22,8 @@ export interface Usdt247ResponseBody {
   qr_link?: string;
   qr_data?: string;
   bankInfo?: Usdt247BankInfo;
+  transferContent?: string;
+  vaAmount?: number;
 }
 
 export interface Usdt247PayData {
