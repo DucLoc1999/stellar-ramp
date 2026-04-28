@@ -10,7 +10,7 @@ import {
 } from '@stellar/stellar-sdk';
 import db from '../db';
 import { decrypt } from './encryptionService';
-import { emitDisburseCrypto } from './queueService';
+import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
 
 const HORIZON_URLS = {
   testnet: 'https://horizon-testnet.stellar.org',
@@ -187,7 +187,7 @@ export async function executeStellarPayment(
   }
 }
 
-export async function disburseUSDT(
+export async function disburseUSDC(
   orderId: number,
   recipientPublicKey: string,
   amount: string,
@@ -205,6 +205,7 @@ export async function disburseUSDT(
       .update({
         transaction_hash: result.hash,
         order_state: 3,
+        processing_state: 14,
       });
   } else {
     const isNoTrustline = result.error?.startsWith('RECIPIENT_NO_TRUSTLINE');
@@ -212,6 +213,7 @@ export async function disburseUSDT(
       .where({ id: orderId })
       .update({
         order_state: 4,
+        processing_state: 15,
         error_message: isNoTrustline ? 'RECIPIENT_NO_TRUSTLINE' : result.error,
       });
   }
@@ -225,12 +227,22 @@ export async function triggerDisburse(
   amount: string,
   paymentCode: string,
   tokenAddress: string
-): Promise<void> {
-  await emitDisburseCrypto({
-    orderId,
-    recipientPublicKey,
-    amount,
-    paymentCode,
-    tokenAddress,
-  });
+): Promise<DisburseResult> {
+  await db('orders')
+    .where({ id: orderId })
+    .update({ processing_state: 13 });
+
+  if (isKafkaAvailable()) {
+    await emitDisburseCrypto({
+      orderId,
+      recipientPublicKey,
+      amount,
+      paymentCode,
+      tokenAddress,
+    });
+    return { hash: '', success: true };
+  } else {
+    console.log(`[StellarService] Direct disburse for order ${orderId}`);
+    return await disburseUSDC(orderId, recipientPublicKey, amount, paymentCode, tokenAddress);
+  }
 }

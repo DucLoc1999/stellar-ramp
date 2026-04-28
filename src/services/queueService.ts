@@ -16,30 +16,61 @@ export interface OrderPaidEvent {
 }
 
 let producer: Producer | null = null;
+let kafkaAvailable: boolean | null = null;
 
-export async function initKafka(): Promise<Producer> {
+export function isKafkaAvailable(): boolean {
+  if (kafkaAvailable === null) {
+    throw new Error('KAFKA_AVAILABLE not initialized. Call initKafka() first.');
+  }
+  return kafkaAvailable;
+}
+
+export async function initKafka(forceMode?: boolean): Promise<void> {
   const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
   const clientId = process.env.KAFKA_CLIENT_ID || 'payment_svc';
 
-  producer = new Kafka({
-    clientId,
-    brokers,
-    logLevel: logLevel.WARN,
-  }).producer();
+  if (forceMode === false) {
+    kafkaAvailable = false;
+    console.log('[QueueService] Kafka disabled (forced)');
+    return;
+  }
 
-  await producer.connect();
-  return producer;
+  if (brokers[0] === 'localhost:9092' || brokers[0] === '127.0.0.1:9092' || brokers[0] === '') {
+    kafkaAvailable = false;
+    console.log('[QueueService] Kafka disabled (no broker configured)');
+    return;
+  }
+
+  try {
+    producer = new Kafka({
+      clientId,
+      brokers,
+      logLevel: logLevel.WARN,
+    }).producer();
+
+    await producer.connect();
+    kafkaAvailable = true;
+    console.log('[QueueService] Kafka connected');
+  } catch (error) {
+    kafkaAvailable = false;
+    console.log('[QueueService] Kafka unavailable, using direct mode:', error);
+  }
 }
 
-export async function getProducer(): Promise<Producer> {
-  if (!producer) {
-    return initKafka();
+export async function getProducer(): Promise<Producer | null> {
+  if (!producer && kafkaAvailable) {
+    await initKafka();
   }
   return producer;
 }
 
 export async function emitDisburseCrypto(event: DisburseCryptoEvent): Promise<void> {
+  if (!kafkaAvailable) {
+    console.log('[QueueService] Kafka unavailable, skipping emitDisburseCrypto');
+    return;
+  }
   const p = await getProducer();
+  if (!p) return;
   const topic = process.env.KAFKA_DISBURSE_TOPIC || 'disburse_crypto';
   await p.send({
     topic,
@@ -53,7 +84,12 @@ export async function emitDisburseCrypto(event: DisburseCryptoEvent): Promise<vo
 }
 
 export async function emitOrderPaid(event: OrderPaidEvent): Promise<void> {
+  if (!kafkaAvailable) {
+    console.log('[QueueService] Kafka unavailable, skipping emitOrderPaid');
+    return;
+  }
   const p = await getProducer();
+  if (!p) return;
   const topic = process.env.KAFKA_ORDER_PAID_TOPIC || 'order_paid';
   await p.send({
     topic,

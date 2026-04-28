@@ -107,14 +107,12 @@ export async function fireCallback(
   orderId: string | number,
   oldState: number,
   newState: number,
-  states?: {
-    oldProcessingState?: number | null;
-    newProcessingState?: number | null;
-  }
+  oldProcessingState?: number | null,
+  newProcessingState?: number | null
 ): Promise<void> {
   const payload: WebhookEvent = {
     id: String(orderId),
-    topic: 'order.state.change',
+    topic: 'order.state_changed',
     ts: new Date().toISOString(),
     payload: {
       order_id: String(orderId),
@@ -123,11 +121,11 @@ export async function fireCallback(
     },
   };
 
-  if (typeof states?.oldProcessingState === 'number') {
-    payload.payload.old_order_processing_state = states.oldProcessingState;
+  if (typeof oldProcessingState === 'number') {
+    payload.payload.old_order_processing_state = oldProcessingState;
   }
-  if (typeof states?.newProcessingState === 'number') {
-    payload.payload.new_order_processing_state = states.newProcessingState;
+  if (typeof newProcessingState === 'number') {
+    payload.payload.new_order_processing_state = newProcessingState;
   }
 
   if (!callbackUrl) return;

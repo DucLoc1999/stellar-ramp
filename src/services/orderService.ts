@@ -84,7 +84,7 @@ function toApiOrder(
     provider: order.direction === 'buy' ? 'sepay' : 'chain',
     callback: order.callback,
     amount: typeof order.usdt_amount === 'string' ? parseFloat(order.usdt_amount) : order.usdt_amount,
-    currency: 'USDT',
+    currency: 'USDC',
     rate,
     token_address: order.token_address,
     recipient: order.recipient ?? '',
@@ -156,6 +156,8 @@ export async function createBuyOrder(usdt_amount: number) {
     va_number: sepayOrder.va_number,
     transfer_content: sepayOrder.transfer_content,
     amount: sepayOrder.amount,
+    order_state: OrderState.PROCESSING,
+    processing_state: 10,
   });
   const id = firstInsertedId(inserted);
 
@@ -182,18 +184,12 @@ export async function confirmPayment(params: {
       payment_confirmed_at: db.fn.now(),
     });
 
-  const oldState = order.order_state || 0;
-  await db('orders')
-    .where({ payment_code: params.payment_code })
-    .update({ order_state: OrderState.PROCESSING });
-
   if (order.direction === 'buy' && order.recipient) {
     const usdtAmount = order.usdt_amount.toString();
-    await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address);
-  }
-
-  if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => { });
+    const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address);
+    if (result.success && order.callback) {
+      fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, 10, 14).catch(() => { });
+    }
   }
 }
 
@@ -222,7 +218,8 @@ export async function createDeposit(
       token_address: req.token_address,
       recipient: req.recipient,
       callback: req.callback,
-      order_state: OrderState.CREATED,
+      order_state: OrderState.PROCESSING,
+      processing_state: 10,
       expired_at: expiredAt,
       va_number: result.sepayOrder.va_number,
       transfer_content: result.sepayOrder.transfer_content,
@@ -230,7 +227,7 @@ export async function createDeposit(
     })
     .returning('*');
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => { });
+  fireCallback(req.callback, order.id, 0, OrderState.PROCESSING, 0, 10).catch(() => { });
   return toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
@@ -269,6 +266,7 @@ export async function createWithdrawal(
       fee_vnd: quote.fee_vnd,
       payment_status: 'pending',
       order_state: OrderState.CREATED,
+      processing_state: 10,
       chain_id: req.chain_id,
       token_address: req.token_address,
       callback: req.callback,
@@ -280,7 +278,7 @@ export async function createWithdrawal(
     })
     .returning('*');
   const order = firstRow<OrderRow>(inserted as OrderRow | OrderRow[]);
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED).catch(() => { });
+  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch(() => { });
 
   const hotWallet = await loadHotWallet();
   return toApiOrder(order as OrderRow, {
@@ -330,7 +328,7 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
   const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED).catch(() => { });
+    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch(() => { });
   }
 
   return {
@@ -347,11 +345,12 @@ export async function updateOrderState(paymentCode: string, newState: number | s
   if (!order) return;
 
   const oldState = order.order_state || 0;
+  const oldProcessingState = order.processing_state || 0;
   const stateNum = typeof newState === 'string' ? Number(newState) : newState;
   await db('orders').where({ payment_code: paymentCode }).update({ order_state: stateNum });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, stateNum).catch(() => { });
+    fireCallback(order.callback, order.id, oldState, stateNum, oldProcessingState, oldProcessingState).catch(() => { });
   }
 }
 
@@ -397,16 +396,18 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
   }
 
   const oldState = order.order_state || 0;
+  const oldProcessingState = order.processing_state || 0;
 
   await db('orders')
     .where({ payment_code: paymentCode })
     .update({
       order_state: OrderState.PROCESSING,
+      processing_state: 14,
       transaction_hash: txHash,
     });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING).catch(() => { });
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, 14).catch(() => { });
   }
 
   return { success: true };

@@ -8,7 +8,7 @@ export interface WebhookPayload {
 
 export interface WebhookEvent {
   id: string;
-  topic: 'order.state.change';
+  topic: 'order.state_changed';
   ts: string;
   payload: WebhookPayload;
 }
