@@ -13,6 +13,8 @@ export async function priceRoutes(app: FastifyInstance): Promise<void> {
             created_at: { type: 'string' },
             buy: { type: 'number' },
             sell: { type: 'number' },
+            fee_rate_buy: { type: 'number' },
+            fee_rate_sell: { type: 'number' },
           },
         },
       },

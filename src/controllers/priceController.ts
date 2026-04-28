@@ -10,5 +10,7 @@ export async function handleGetRate(
     created_at: rate.updated_at,
     buy: rate.buy_price,
     sell: rate.sell_price,
+    fee_rate_buy: rate.fee_rate_buy,
+    fee_rate_sell: rate.fee_rate_sell,
   });
 }

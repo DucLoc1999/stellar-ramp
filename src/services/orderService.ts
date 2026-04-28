@@ -3,6 +3,7 @@ import { getQuote } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER } from './stellarService';
+import { getConfigNumber } from './configService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
 import { OrderState } from '../models/types';
@@ -57,10 +58,10 @@ function toTimestamp(date: Date): Usdt247Timestamp {
   };
 }
 
-function toApiOrder(
+async function toApiOrder(
   order: OrderRow,
   overrides?: Partial<Pick<Usdt247Order, 'body' | 'pay_data' | 'user_id' | 'client_ip' | 'outcome'>>
-): Usdt247Order {
+): Promise<Usdt247Order> {
   const rate = typeof order.rate === 'string' ? Number(order.rate) : order.rate;
   const feeVnd = typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd;
   const expiry = order.expired_at ?? new Date(order.created_at.getTime() + 30 * 60 * 1000);
@@ -74,6 +75,10 @@ function toApiOrder(
       paymentInfo = null;
     }
   }
+
+  const spreadBuy = await getConfigNumber('spread_buy', 50);
+  const spreadSell = await getConfigNumber('spread_sell', 50);
+  const originalRate = order.direction === 'buy' ? rate - spreadBuy : rate + spreadSell;
 
   return {
     id: String(order.id),
@@ -108,12 +113,12 @@ function toApiOrder(
     updated_at: toTimestamp(order.updated_at),
     client_ip: overrides?.client_ip ?? '',
     outcome: overrides?.outcome ?? '',
-    original_rate: rate,
+    original_rate: originalRate,
     total_fee_vnd: feeVnd,
   };
 }
 
-export function formatOrderResponse(order: OrderRow): Usdt247Order {
+export async function formatOrderResponse(order: OrderRow): Promise<Usdt247Order> {
   return toApiOrder(order);
 }
 
@@ -228,7 +233,7 @@ export async function createDeposit(
     .returning('*');
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
   fireCallback(req.callback, order.id, 0, OrderState.PROCESSING, 0, 10).catch(() => { });
-  return toApiOrder(order as OrderRow, {
+  return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
     body: {
@@ -281,7 +286,7 @@ export async function createWithdrawal(
   fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch(() => { });
 
   const hotWallet = await loadHotWallet();
-  return toApiOrder(order as OrderRow, {
+  return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
     pay_data: { address: hotWallet.publicKey },
