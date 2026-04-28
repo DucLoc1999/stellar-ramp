@@ -21,7 +21,7 @@ Production image uses multi-stage build (builder → production). Migration runs
 npm run dev              # tsx watch — restarts on file changes
 npm run build            # tsc → dist/
 npm run start            # node dist/server.js
-npm run worker:disburse  # Kafka consumer for USDT disbursement
+npm run worker:disburse  # Kafka consumer for USDC disbursement
 npm run migrate          # knex migrate:latest --knexfile src/knexfile.ts
 npm run migrate:rollback # knex migrate:rollback --knexfile src/knexfile.ts
 npm run wallet:add       # add/update wallet (scripts/add-wallet.ts)
@@ -80,12 +80,12 @@ All order endpoints require `Partner-App-Key` header:
 ### Callback to Client
 Service signs callbacks with `X-Timestamp` + `X-Signature` (HMAC-SHA256). Client verifies.
 
-## Data Flow: Deposit (Buy USDT)
+## Data Flow: Deposit (Buy USDC)
 
 1. Client → `POST /api/orders/deposit` with `{ amount, chain_id, token_address, recipient, callback }`
 2. `orderService.createDeposit()` → `priceService.getQuote('buy')` → `binanceService` + `configService`
 3. Order saved to DB with `payment_status: 'pending'`, `order_state: 1 (CREATED)`. Callback fired (with retry + signature).
-4. Client receives payment_code (e.g., `USDT247-A3F8B2C1`), checkout URL / QR code / bank info
+4. Client receives payment_code (e.g., `USDC247-A3F8B2C1`), checkout URL / QR code / bank info
 5. User transfers VND to SePay bank with content = `payment_code`
 6. SePay → `POST /api/webhooks/sepay` → `sepayService.handleSepayWebhook()` matches `code`, validates amount
 7. `orderService.confirmPayment()` → updates to `payment_received`, `order_state: 2 (PROCESSING)`, emits `DISBURSE_CRYPTO` to Kafka
@@ -93,11 +93,11 @@ Service signs callbacks with `X-Timestamp` + `X-Signature` (HMAC-SHA256). Client
 9. On success: updates `order_state: 3 (COMPLETED)`, emits `ORDER_PAID` to Kafka
 10. Callback POSTed to client's `callback` URL (with HMAC signature, retry up to 3×)
 
-## Data Flow: Withdrawal (Sell USDT)
+## Data Flow: Withdrawal (Sell USDC)
 
 1. Client → `POST /api/orders/withdrawal` with `{ amount, chain_id, token_address, callback, payment_info }`
 2. Order saved with bank details, `order_state: 1 (CREATED)`. Callback fired.
-3. External system sends USDT to hot wallet
+3. External system sends USDC to hot wallet
 4. External system → `POST /api/webhooks/chain` with tx confirmation
 5. `orderService.handleChainEvent()` validates address/amount, updates to `order_state: 2 (PROCESSING)`
 6. VND payout executed (stub), updates to `order_state: 3 (COMPLETED)`
@@ -176,7 +176,7 @@ All errors return standardized format with `X-Trace-ID` header:
 - `sepayPgService.ts` — SePay checkout session
 - `orderService.ts` — deposit/withdrawal creation, confirmPayment, cancelOrder, handleChainEvent, formatOrderResponse
 - `queueService.ts` — Kafka producer: emitDisburseCrypto, emitOrderPaid
-- `stellarService.ts` — Stellar payment: initStellarServer, loadHotWallet, disburseUSDT
+- `stellarService.ts` — Stellar payment: initStellarServer, loadHotWallet, disburseUSDC
 - `encryptionService.ts` — AES-256-GCM encrypt/decrypt for wallet secrets
 - `callbackService.ts` — webhook callback with retry (3×), logging, HMAC signature, dual-secret rotation
 - `sepayService.ts` — webhook handler, deduplication
@@ -228,7 +228,7 @@ All via `import 'dotenv/config'`. See `.env.example`:
 
 ## Payment Code
 
-`USDT247-<8-char>` — unique order identifier. Used as SePay transfer description.
+`USDC247-<8-char>` — unique order identifier. Used as SePay transfer description.
 
 ## tsconfig
 

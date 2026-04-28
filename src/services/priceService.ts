@@ -57,8 +57,8 @@ export async function getQuote(direction: 'buy' | 'sell', usdt_amount: number): 
 
   const note =
     direction === 'buy'
-      ? `Bạn cần chuyển ${net_vnd.toLocaleString('vi-VN')} VND để nhận ${usdt_amount} USDT`
-      : `Bạn nhận được ${net_vnd.toLocaleString('vi-VN')} VND khi bán ${usdt_amount} USDT`;
+      ? `Bạn cần chuyển ${net_vnd.toLocaleString('vi-VN')} VND để nhận ${usdt_amount} USDC`
+      : `Bạn nhận được ${net_vnd.toLocaleString('vi-VN')} VND khi bán ${usdt_amount} USDC`;
 
   return { direction, usdt_amount, rate: price, gross_vnd, fee_rate, fee_vnd, net_vnd, note };
 }

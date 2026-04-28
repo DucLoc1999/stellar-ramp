@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Kafka, Consumer, logLevel } from 'kafkajs';
-import { disburseUSDT, initStellarServer } from '../services/stellarService';
+import { disburseUSDC, initStellarServer } from '../services/stellarService';
 import { emitOrderPaid, OrderPaidEvent } from '../services/queueService';
 import { OrderState } from '../models/types';
 import db from '../db';
@@ -29,7 +29,7 @@ async function processDisburseEvent(message: DisburseMessage): Promise<void> {
   console.log(`[DisburseWorker] Processing order ${orderId}, attempt ${attempt + 1}/${MAX_RETRIES}`);
 
   try {
-    const result = await disburseUSDT(orderId, recipientPublicKey, amount, paymentCode, tokenAddress);
+    const result = await disburseUSDC(orderId, recipientPublicKey, amount, paymentCode, tokenAddress);
 
     if (result.success) {
       console.log(`[DisburseWorker] Success for order ${orderId}, hash: ${result.hash}`);
@@ -103,10 +103,11 @@ async function startWorker(): Promise<void> {
 
   const consumer = kafka.consumer({ groupId: `${clientId}-disburse-group` });
   await consumer.connect();
-  await consumer.subscribe({ topic, fromBeginning: false });
+  await consumer.subscribe({ topic, fromBeginning: true });
 
   await consumer.run({
     eachMessage: async ({ message }) => {
+      console.log('[DisburseWorker] Received message:', message.value?.toString());
       if (!message.value) return;
 
       try {

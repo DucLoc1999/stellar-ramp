@@ -43,14 +43,14 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     preHandler: chainWebhookAuth,
     schema: {
       tags: ['Webhooks'],
-      summary: 'Chain webhook — receives external chain events (USDT received at hot wallet)',
+      summary: 'Chain webhook — receives external chain events (USDC received at hot wallet)',
       body: {
         type: 'object',
         required: ['order_key', 'tx_hash', 'amount', 'address', 'chain_id'],
         properties: {
           order_key: { type: 'string', description: 'Payment code (e.g. USD247-XXXXXXXX)' },
           tx_hash: { type: 'string', description: 'Stellar transaction hash' },
-          amount: { type: 'string', description: 'USDT amount received' },
+          amount: { type: 'string', description: 'USDC amount received' },
           address: { type: 'string', description: 'Destination address (hot wallet)' },
           chain_id: { type: 'integer', description: 'Chain ID (56=BSC, 20=TRC20, 1=ERC20)' },
         },

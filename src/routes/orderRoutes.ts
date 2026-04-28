@@ -11,15 +11,15 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     preHandler: partnerAuth,
     schema: {
       tags: ['Orders'],
-      summary: 'Create a deposit order (buy USDT) — returns SePay checkout session',
+      summary: 'Create a deposit order (buy USDC) — returns SePay checkout session',
       body: {
         type: 'object',
         required: ['amount', 'chain_id', 'token_address', 'recipient', 'callback'],
         properties: {
-          amount: { type: 'string', description: 'USDT amount as string' },
+          amount: { type: 'string', description: 'USDC amount as string' },
           chain_id: { type: 'integer', description: 'Chain ID (56=BSC, 20=TRC20, 1=ERC20)' },
-          token_address: { type: 'string', description: 'USDT contract address' },
-          recipient: { type: 'string', description: "User's wallet to receive USDT" },
+          token_address: { type: 'string', description: 'USDC contract address' },
+          recipient: { type: 'string', description: "User's wallet to receive USDC" },
           callback: { type: 'string', description: 'Webhook URL for order state changes' },
           user_id: { type: 'string', description: 'Optional client user ID' },
         },
@@ -40,11 +40,11 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     preHandler: partnerAuth,
     schema: {
       tags: ['Orders'],
-      summary: 'Create a withdrawal order (sell USDT) — stub, logic incomplete',
+      summary: 'Create a withdrawal order (sell USDC) — stub, logic incomplete',
       body: {
         type: 'object',
         required: ['amount', 'chain_id', 'token_address', 'callback', 'payment_info'],
-properties: {
+        properties: {
           amount: { type: 'string' },
           chain_id: { type: 'integer' },
           token_address: { type: 'string' },
@@ -82,7 +82,7 @@ properties: {
       params: {
         type: 'object',
         properties: {
-          payment_code: { type: 'string', description: 'e.g. USDT247-A3F8B2C1' },
+          payment_code: { type: 'string', description: 'e.g. USDC247-A3F8B2C1' },
         },
       },
       response: {
@@ -120,7 +120,7 @@ properties: {
       params: {
         type: 'object',
         properties: {
-          payment_code: { type: 'string', description: 'e.g. USDT247-A3F8B2C1' },
+          payment_code: { type: 'string', description: 'e.g. USDC247-A3F8B2C1' },
         },
       },
       body: {

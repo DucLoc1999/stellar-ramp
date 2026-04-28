@@ -73,7 +73,7 @@ describe('POST /api/orders/deposit', () => {
     const body = res.json();
     expect(body.success).toBe(true);
     expect(body.data.order_type).toBe('buy');
-    expect(body.data.code).toMatch(/^USDT247-[A-Z0-9]{8}$/);
+    expect(body.data.code).toMatch(/^USDC247-[A-Z0-9]{8}$/);
     expect(body.data.state).toBe(1);
     expect(body.data.amount).toBe(100);
     expect(body.data.recipient).toBe(DEPOSIT_BODY.recipient);
@@ -95,7 +95,7 @@ describe('POST /api/orders/deposit', () => {
     expect(data.body.bankInfo).toBeDefined();
   });
 
-  it('returns canonical USDT247 monetary fields', async () => {
+  it('returns canonical USDC247 monetary fields', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
@@ -105,7 +105,7 @@ describe('POST /api/orders/deposit', () => {
 
     const { data } = res.json();
     expect(data.amount).toBe(100);
-    expect(data.currency).toBe('USDT');
+    expect(data.currency).toBe('USDC');
     expect(data.rate).toBeGreaterThan(0);
     expect(data.total_fee_vnd).toBeGreaterThan(0);
   });
@@ -189,7 +189,7 @@ describe('POST /api/orders/withdrawal', () => {
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
     expect(data.order_type).toBe('sell');
-    expect(data.code).toMatch(/^USDT247-[A-Z0-9]{8}$/);
+    expect(data.code).toMatch(/^USDC247-[A-Z0-9]{8}$/);
     expect(data.state).toBe(1);
     expect(data.amount).toBe(50);
   });
@@ -277,7 +277,7 @@ describe('GET /api/orders/:payment_code', () => {
   it('returns 404 for nonexistent code', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/orders/USDT247-ZZZZZZZZ',
+      url: '/api/orders/USDC247-ZZZZZZZZ',
       headers: PARTNER_HEADERS,
     });
 

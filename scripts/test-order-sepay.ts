@@ -56,7 +56,7 @@ async function main() {
   const amount = process.argv[2] || '10';
   const tokenAddress = process.argv[3] || '';
 
-  console.log(`--- Creating deposit: ${amount} USDT ---`);
+  console.log(`--- Creating deposit: ${amount} USDC ---`);
   const res = await createDeposit(amount, '2', tokenAddress);
 
   console.log('\nResponse:');

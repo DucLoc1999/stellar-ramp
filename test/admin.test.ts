@@ -63,7 +63,7 @@ describe('Admin workflow', () => {
     const token = await login();
 
     await db('orders').insert({
-      payment_code: 'USDT247-TEST0001',
+      payment_code: 'USDC247-TEST0001',
       direction: 'buy',
       usdt_amount: 10,
       rate: 25000,

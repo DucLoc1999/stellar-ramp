@@ -15,7 +15,7 @@ async function fetchMedianPrice(tradeType: 'BUY' | 'SELL'): Promise<number> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      asset: 'USDT',
+      asset: 'USDC',
       fiat: 'VND',
       merchantCheck: false,
       page: 1,

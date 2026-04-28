@@ -3,7 +3,7 @@ import { buildApp } from './app';
 import { logger } from './config/logger';
 import { appConfig } from './config/app';
 import { initStellarServer, loadHotWallet, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE } from './services/stellarService';
-import { getProducer } from './services/queueService';
+import { initKafka } from './services/queueService';
 import db from './db';
 
 async function healthCheck() {
@@ -16,13 +16,7 @@ async function healthCheck() {
 }
 
 async function checkKafkaConnection() {
-  try {
-    const producer = await getProducer();
-    await producer.connect();
-    logger.info('Kafka connection OK');
-  } catch (err) {
-    throw new Error(`Kafka connection failed: ${(err as Error).message}`);
-  }
+  await initKafka();
 }
 
 async function checkHotWalletTrustline() {
@@ -31,6 +25,7 @@ async function checkHotWalletTrustline() {
     initStellarServer(network);
 
     const wallet = await loadHotWallet();
+    console.log('Hot wallet:', wallet.publicKey);
     const hasTrust = await hasTrustline(wallet.publicKey, DEFAULT_ASSET_CODE, SUPPORTED_TOKEN_ISSUER);
 
     if (!hasTrust) {

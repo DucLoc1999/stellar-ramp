@@ -1,3 +1,5 @@
+import { getConfig } from './configService';
+
 export interface SepayBankInfo {
   account_number: string;
   account_holder_name: string;
@@ -33,12 +35,18 @@ export interface SepayOrderListItem {
   }>;
 }
 
-function getBankInfo(): SepayBankInfo {
+async function getBankInfo(): Promise<SepayBankInfo> {
+  const [va_number, va_holder, bank_name, bank_short] = await Promise.all([
+    getConfig('bank_va_number'),
+    getConfig('bank_va_holder'),
+    getConfig('bank_name'),
+    getConfig('bank_short'),
+  ]);
   return {
-    account_number: process.env.SEPAY_VA_NUMBER || '8825882089',
-    account_holder_name: process.env.SEPAY_VA_HOLDER || 'NGUYEN DUC LOC',
-    bank_name: process.env.SEPAY_BANK_NAME || 'BIDV',
-    bank_short_name: process.env.SEPAY_BANK_SHORT || 'BIDV',
+    account_number: va_number ?? process.env.SEPAY_VA_NUMBER ?? '8825882089',
+    account_holder_name: va_holder ?? process.env.SEPAY_VA_HOLDER ?? 'NGUYEN DUC LOC',
+    bank_name: bank_name ?? process.env.SEPAY_BANK_NAME ?? 'BIDV',
+    bank_short_name: bank_short ?? process.env.SEPAY_BANK_SHORT ?? 'BIDV',
   };
 }
 
@@ -46,7 +54,7 @@ export async function createSepayOrder(params: {
   payment_code: string;
   net_vnd: number;
 }): Promise<SepayOrderResult> {
-  const bank = getBankInfo();
+  const bank = await getBankInfo();
   const qr_code_url = `https://qr.sepay.vn/img?acc=${bank.account_number}&bank=${bank.bank_short_name}&amount=${params.net_vnd}&des=${encodeURIComponent(params.payment_code)}&template=qronly`;
   return {
     bank_info: bank,
