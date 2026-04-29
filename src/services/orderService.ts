@@ -115,6 +115,7 @@ async function toApiOrder(
     outcome: overrides?.outcome ?? '',
     original_rate: originalRate,
     total_fee_vnd: feeVnd,
+    transaction_hash: order.transaction_hash,
   };
 }
 

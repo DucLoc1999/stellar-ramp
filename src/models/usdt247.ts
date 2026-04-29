@@ -69,4 +69,5 @@ export interface Usdt247Order {
   outcome: string;
   original_rate: number;
   total_fee_vnd: number;
+  transaction_hash?: string | null;
 }

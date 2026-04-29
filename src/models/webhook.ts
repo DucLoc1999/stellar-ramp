@@ -4,6 +4,7 @@ export interface WebhookPayload {
   new_order_state: number;
   old_order_processing_state?: number;
   new_order_processing_state?: number;
+  transaction_hash?: string | null;
 }
 
 export interface WebhookEvent {

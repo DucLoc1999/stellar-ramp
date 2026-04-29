@@ -110,6 +110,10 @@ export async function fireCallback(
   oldProcessingState?: number | null,
   newProcessingState?: number | null
 ): Promise<void> {
+  const orderIdNum = Number(orderId);
+  const order = await db('orders').where({ id: orderIdNum }).first();
+  const txHash = order?.transaction_hash ?? null;
+
   const payload: WebhookEvent = {
     id: String(orderId),
     topic: 'order.state_changed',
@@ -118,6 +122,7 @@ export async function fireCallback(
       order_id: String(orderId),
       old_order_state: oldState,
       new_order_state: newState,
+      transaction_hash: txHash,
     },
   };
 
