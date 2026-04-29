@@ -3,7 +3,7 @@ import { bypassPayment } from '../services/orderService';
 
 interface BypassPaymentBody {
   admin_key: string;
-  payment_code: string;
+  order_id: number;
 }
 
 export async function bypassRoutes(app: FastifyInstance): Promise<void> {
@@ -13,16 +13,16 @@ export async function bypassRoutes(app: FastifyInstance): Promise<void> {
       summary: 'Bypass payment for buy order (admin key)',
       body: {
         type: 'object',
-        required: ['admin_key', 'payment_code'],
+        required: ['admin_key', 'order_id'],
         properties: {
           admin_key: { type: 'string' },
-          payment_code: { type: 'string' },
+          order_id: { type: 'integer' },
         },
       },
     },
   }, async (req, reply) => {
-    const { admin_key, payment_code } = req.body;
-    const result = await bypassPayment(admin_key, payment_code);
+    const { admin_key, order_id } = req.body;
+    const result = await bypassPayment(admin_key, order_id);
     if (result.error) {
       return reply.status(400).send({ success: false, error: result.error });
     }
