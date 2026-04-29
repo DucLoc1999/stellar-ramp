@@ -417,3 +417,39 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
 
   return { success: true };
 }
+
+export async function bypassPayment(adminKey: string, paymentCode: string): Promise<{ success?: boolean; error?: string }> {
+  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  if (!bootstrapPassword || adminKey !== bootstrapPassword) {
+    return { error: 'INVALID_ADMIN_CODE' };
+  }
+
+  const order = await getOrderByCode(paymentCode);
+  if (!order) {
+    return { error: 'ORDER_NOT_FOUND' };
+  }
+
+  if (order.direction !== 'buy') {
+    return { error: 'NOT_BUY_ORDER' };
+  }
+
+  const currentState = order.order_state || 0;
+  if (currentState === OrderState.COMPLETED || currentState === OrderState.FAILED || currentState === OrderState.CANCELLED) {
+    return { error: 'ORDER_NOT_ELIGIBLE' };
+  }
+
+  if (order.payment_status !== 'pending') {
+    return { error: 'PAYMENT_ALREADY_RECEIVED' };
+  }
+
+  try {
+    await confirmPayment({
+      payment_code: paymentCode,
+      sepay_transaction_id: `bypass-${Date.now()}`,
+      vnd_received: Number(order.net_vnd),
+    });
+    return { success: true };
+  } catch (err) {
+    return { error: 'CONFIRMATION_FAILED' };
+  }
+}

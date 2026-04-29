@@ -8,6 +8,7 @@ import { configRoutes } from './routes/configRoutes';
 import { orderRoutes } from './routes/orderRoutes';
 import { webhookRoutes } from './routes/webhookRoutes';
 import { adminRoutes } from './routes/adminRoutes';
+import { bypassRoutes } from './routes/bypassRoutes';
 import { errorHandler } from './middlewares/errorHandler';
 import db from './db';
 import { runMigrations } from './utils/migrationRunner';
@@ -43,6 +44,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/health', async () => ({ status: 'ok' }));
 
   await app.register(adminRoutes);
+  await app.register(bypassRoutes);
   await app.register(priceRoutes, { prefix: '/api/rate' });
   await app.register(configRoutes, { prefix: '/config' });
   await app.register(orderRoutes, { prefix: '/api/orders' });
