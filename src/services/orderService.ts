@@ -194,7 +194,7 @@ export async function confirmPayment(params: {
     const usdtAmount = order.usdt_amount.toString();
     const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address);
     if (result.success && order.callback) {
-      fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, 10, 14).catch(() => { });
+      fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, 10, 14, result.hash).catch(() => { });
     }
   }
 }

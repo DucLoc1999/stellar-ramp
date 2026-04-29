@@ -57,7 +57,7 @@ async function postCallback(
   const body = JSON.stringify(payload);
   const timestamp = Date.now().toString();
   const secretConfig = await getDualSecretConfig();
-  
+
   let signature: string | null = null;
 
   if (secretConfig.current) {
@@ -108,11 +108,10 @@ export async function fireCallback(
   oldState: number,
   newState: number,
   oldProcessingState?: number | null,
-  newProcessingState?: number | null
+  newProcessingState?: number | null,
+  txHash?: string | null
 ): Promise<void> {
   const orderIdNum = Number(orderId);
-  const order = await db('orders').where({ id: orderIdNum }).first();
-  const txHash = order?.transaction_hash ?? null;
 
   const payload: WebhookEvent = {
     id: String(orderId),
