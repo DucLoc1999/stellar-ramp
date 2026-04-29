@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.prod
+ecosystem.config.js
 
 # build output
 dist/
