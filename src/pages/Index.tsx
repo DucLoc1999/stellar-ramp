@@ -1,9 +1,10 @@
-import { FeaturesSection } from '../components/sections/FeaturesSection';
-import { FinalCtaSection } from '../components/sections/FinalCtaSection';
-import { FaqSection } from '../components/sections/FaqSection';
-import { HeroSection } from '../components/sections/HeroSection';
-import { HowItWorksSection } from '../components/sections/HowItWorksSection';
-import { RatesSection } from '../components/sections/RatesSection';
+import { FeaturesSection } from "../components/sections/FeaturesSection";
+import { FinalCtaSection } from "../components/sections/FinalCtaSection";
+import { FaqSection } from "../components/sections/FaqSection";
+import { HeroSection } from "../components/sections/HeroSection";
+import { HowItWorksSection } from "../components/sections/HowItWorksSection";
+import { RatesSection } from "../components/sections/RatesSection";
+import { UserFeedbackSection } from "../components/sections/UserFeedbackSection";
 
 export default function Index() {
   return (
@@ -12,6 +13,7 @@ export default function Index() {
       <FeaturesSection />
       <HowItWorksSection />
       <RatesSection />
+      <UserFeedbackSection />
       <FaqSection />
       <FinalCtaSection />
     </div>

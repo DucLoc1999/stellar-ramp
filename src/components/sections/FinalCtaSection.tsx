@@ -1,7 +1,5 @@
-import { ArrowUpRight, MessageCircle } from 'lucide-react';
-
-const BOT_URL = 'https://t.me/stellarrampbot';
-const SUPPORT_URL = 'https://t.me/stellarampsupport';
+const BOT_URL =
+  import.meta.env.VITE_TELEGRAM_LINK || "https://t.me/USDT247_bot";
 
 export const FinalCtaSection = () => {
   return (
@@ -26,26 +24,26 @@ export const FinalCtaSection = () => {
               Ready to trade XLM and USDC safely and instantly?
             </h2>
             <p className="text-base text-slate-300 sm:text-lg max-w-2xl mx-auto">
-              Join StellarRamp and experience automated crypto-to-VND trading in seconds. No app download. No hidden fees.
+              Join StellarRamp and experience automated crypto-to-VND trading in
+              seconds. No app download. No hidden fees.
             </p>
-            <div className="flex flex-col justify-center gap-4 sm:flex-row">
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
               <a
                 href={BOT_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn-primary btn-primary-lg group rounded-xl"
+                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-base font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg transition-transform hover:-translate-y-1"
               >
-                🚀 Open StellarRamp on Telegram
-                <ArrowUpRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                <span className="mr-2 text-xl" aria-hidden="true">
+                  ✈
+                </span>
+                Open bot on Telegram
               </a>
               <a
-                href={SUPPORT_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group inline-flex items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-800/50 px-6 py-3 text-base font-bold text-slate-300 transition-all hover:border-slate-500 hover:bg-slate-700/50"
+                href="#contact"
+                className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-base font-bold text-slate-300 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600 hover:border-slate-500 rounded-xl transition-all"
               >
-                💬 Contact 24/7 Support
-                <MessageCircle className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
+                Contact Support
               </a>
             </div>
           </div>

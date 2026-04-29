@@ -1,12 +1,16 @@
-import { ArrowUpRight, Headset, Lock, Zap } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { ExchangeRatesResponse } from '@shared/api';
+import { CheckCircle2, Shield, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ExchangeRatesResponse } from "@shared/api";
 
-const BOT_URL = 'https://t.me/stellarrampbot';
+const BOT_URL =
+  import.meta.env.VITE_TELEGRAM_LINK || "https://t.me/usdt247shopbot";
 
 // Module-level 1-minute client cache — persists across re-renders, cleared on page reload
 const CACHE_TTL = 60_000;
-const clientCache = new Map<string, { data: ExchangeRatesResponse; expiresAt: number }>();
+const clientCache = new Map<
+  string,
+  { data: ExchangeRatesResponse; expiresAt: number }
+>();
 
 async function fetchRate(url: string): Promise<ExchangeRatesResponse | null> {
   const cached = clientCache.get(url);
@@ -23,23 +27,37 @@ async function fetchRate(url: string): Promise<ExchangeRatesResponse | null> {
   }
 }
 
-function RatePair({ label, data, loading }: { label: string; data: ExchangeRatesResponse | null; loading: boolean }) {
-  const fmt = (n: number) => n.toLocaleString('vi-VN');
+function RatePair({
+  label,
+  data,
+  loading,
+}: {
+  label: string;
+  data: ExchangeRatesResponse | null;
+  loading: boolean;
+}) {
+  const fmt = (n: number) => n.toLocaleString("vi-VN");
   return (
     <div>
-      <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">
-          <p className="mb-1 text-xs font-medium text-slate-500">Buy rate</p>
-          <p className="text-lg font-bold text-emerald-600">
-            {loading ? '...' : data ? `${fmt(data.buy)} ₫` : 'N/A'}
-          </p>
+      <p className="text-xs font-bold text-slate-500 tracking-wider mb-2">
+        {label}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white rounded-lg p-2.5 border border-slate-200 shadow-sm text-center">
+          <span className="block text-xs text-slate-500 mb-1 font-medium">
+            Buy
+          </span>
+          <span className="block font-bold text-emerald-600 text-sm">
+            {loading ? "..." : data ? `${fmt(data.buy)} ₫` : "N/A"}
+          </span>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-3 text-center shadow-sm">
-          <p className="mb-1 text-xs font-medium text-slate-500">Sell rate</p>
-          <p className="text-lg font-bold text-red-500">
-            {loading ? '...' : data ? `${fmt(data.sell)} ₫` : 'N/A'}
-          </p>
+        <div className="bg-white rounded-lg p-2.5 border border-slate-200 shadow-sm text-center">
+          <span className="block text-xs text-slate-500 mb-1 font-medium">
+            Sell
+          </span>
+          <span className="block font-bold text-red-500 text-sm">
+            {loading ? "..." : data ? `${fmt(data.sell)} ₫` : "N/A"}
+          </span>
         </div>
       </div>
     </div>
@@ -48,7 +66,9 @@ function RatePair({ label, data, loading }: { label: string; data: ExchangeRates
 
 export const HeroSection = () => {
   const [xlmRates, setXlmRates] = useState<ExchangeRatesResponse | null>(null);
-  const [usdcRates, setUsdcRates] = useState<ExchangeRatesResponse | null>(null);
+  const [usdcRates, setUsdcRates] = useState<ExchangeRatesResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,8 +77,8 @@ export const HeroSection = () => {
     async function load() {
       setLoading(true);
       const [xlm, usdc] = await Promise.all([
-        fetchRate('/api/exchange-rate/xlm'),
-        fetchRate('/api/exchange-rate'),
+        fetchRate("/api/exchange-rate/xlm"),
+        fetchRate("/api/exchange-rate"),
       ]);
       if (!cancelled) {
         setXlmRates(xlm);
@@ -76,89 +96,123 @@ export const HeroSection = () => {
   }, []);
 
   return (
-    <section className="relative overflow-hidden pt-8 pb-20">
-      <div className="absolute inset-0 -z-10" style={{ background: 'linear-gradient(to bottom, #f8fafc, #f1f5f9)' }} />
-      <div className="section-container lg:flex-row lg:items-center lg:gap-16">
-        <div className="flex-1 space-y-8">
-          <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/40 bg-blue-500/10 px-4 py-1 text-xs font-extrabold uppercase tracking-[0.28em] text-blue-600">
-            Telegram Bot 24/7
-          </span>
-          <div className="space-y-6">
-            <h1 className="text-4xl font-extrabold leading-tight text-slate-900 sm:text-5xl lg:text-6xl">
-              Buy & Sell XLM and USDC — Fast, Safe & Best Rates 24/7
+    <section
+      id="hero"
+      className="relative pt-20 pb-32 overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100/50"
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          {/* Left Column */}
+          <div className="max-w-2xl">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold tracking-wide uppercase bg-blue-100 text-blue-700 mb-6 border border-blue-200">
+              24/7 TELEGRAM BOT
+            </span>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 leading-tight mb-6">
+              The fastest way to <br className="hidden sm:block" />
+              Buy & Sell <span className="text-blue-600">XLM & USDC</span>{" "}
+              <br className="hidden sm:block" />
+              with VND
             </h1>
-            <p className="max-w-2xl text-lg text-slate-500 sm:text-xl">
-              Trade XLM and USDC anytime via Telegram Bot. Receive VND in minutes — supports all major Vietnamese banks and Stellar network.
+            <p className="text-lg text-slate-600 mb-8 leading-relaxed max-w-xl">
+              Instantly on-ramp and off-ramp via our non-custodial Telegram Bot.
+              Receive VND directly to your local bank account in minutes.{" "}
+              <span className="font-semibold text-slate-800">
+                Zero hidden fees.
+              </span>
             </p>
+            <div className="flex flex-col sm:flex-row gap-4 mb-10">
+              <a
+                href={BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-8 py-3.5 border border-transparent rounded-lg shadow-sm text-base font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all duration-200 transform hover:-translate-y-1"
+              >
+                Buy/Sell on Telegram
+              </a>
+            </div>
+            <ul className="space-y-4 text-sm font-medium text-slate-700">
+              <li className="flex items-center">
+                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 flex-shrink-0" />
+                24/7 Bank Transfers
+              </li>
+              <li className="flex items-center">
+                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 flex-shrink-0" />
+                3-30s Processing
+              </li>
+              <li className="flex items-center">
+                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 flex-shrink-0" />
+                Secure & Transparent
+              </li>
+            </ul>
           </div>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <a
-              href={BOT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary btn-primary-lg group"
-            >
-              🚀 Start Trading on Telegram
-              <ArrowUpRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </a>
-          </div>
-          <ul className="flex flex-wrap items-center gap-x-8 gap-y-3 text-sm text-slate-500">
-            <li className="inline-flex items-center gap-2 font-medium text-slate-700">
-              <Headset className="h-4 w-4 text-blue-600" />
-              ✅ 24/7 Support
-            </li>
-            <li className="inline-flex items-center gap-2 font-medium text-slate-700">
-              <Zap className="h-4 w-4 text-blue-600" />
-              ⚡ Settlement in 3–30s
-            </li>
-            <li className="inline-flex items-center gap-2 font-medium text-slate-700">
-              <Lock className="h-4 w-4 text-blue-600" />
-              🔒 Non-custodial & Transparent
-            </li>
-          </ul>
-        </div>
 
-        <div className="relative flex-1">
-          <div className="absolute -inset-1 rounded-3xl bg-linear-to-r from-blue-400 to-indigo-500 blur opacity-20" />
-          <div className="relative rounded-2xl border border-slate-200 bg-white/80 p-8 shadow-xl backdrop-blur-xl">
-            <div className="flex flex-col gap-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">Bot status</p>
-                  <p className="text-lg font-bold text-blue-600">Active 24/7</p>
-                </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Automated
+          {/* Right Column - Card */}
+          <div className="relative w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-2xl blur opacity-25"></div>
+            <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl overflow-hidden relative border border-slate-200">
+              {/* Card Header */}
+              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-800">
+                  System Overview
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Bot Status: Active 24/7
                 </span>
               </div>
-              <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-center justify-between text-sm text-slate-500">
-                  <span>Supported networks</span>
-                  <span className="text-base font-bold text-slate-900">Stellar · BSC</span>
+
+              {/* Card Content */}
+              <div className="p-6 space-y-5">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">
+                    Supported VN Banks
+                  </span>
+                  <span className="font-bold text-slate-900">50+</span>
                 </div>
-                <div className="flex items-center justify-between text-sm text-slate-500">
-                  <span>Vietnamese banks</span>
-                  <span className="text-base font-bold text-slate-900">30+</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">
+                    Supported Assets
+                  </span>
+                  <span className="font-bold text-slate-900 flex items-center gap-2">
+                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">
+                      XLM
+                    </span>
+                    <span className="bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-200 text-blue-700">
+                      USDC
+                    </span>
+                  </span>
                 </div>
-                <div className="flex items-center justify-between text-sm text-slate-500">
-                  <span>Avg. settlement time</span>
-                  <span className="text-base font-bold text-blue-600">3–30s</span>
-                </div>
-                <div className="border-t border-slate-200 pt-4 flex flex-col gap-4">
-                  <RatePair label="Live Rates (XLM/VND)" data={xlmRates} loading={loading} />
-                  <RatePair label="Live Rates (USDC/VND)" data={usdcRates} loading={loading} />
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">
+                    Avg Processing
+                  </span>
+                  <span className="font-bold text-indigo-600">3-30s</span>
                 </div>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 text-sm">
-                <p className="font-bold text-slate-900">🛡️ Non-Custodial Security</p>
-                <p className="mt-2 text-slate-500">
-                  Your funds never leave your wallet until trade confirmation. All transactions are on-chain and verifiable.
+
+              {/* Live Rates Section */}
+              <div className="bg-slate-100/80 p-6 border-t border-slate-200">
+                <p className="text-xs font-bold text-slate-500 tracking-wider mb-4 uppercase">
+                  Live VND Rates
+                </p>
+                <div className="space-y-4">
+                  <RatePair
+                    label="USDC/VND"
+                    data={usdcRates}
+                    loading={loading}
+                  />
+                  <RatePair label="XLM/VND" data={xlmRates} loading={loading} />
+                </div>
+              </div>
+
+              {/* Security Section */}
+              <div className="bg-blue-50 px-6 py-4 border-t border-blue-100 text-center">
+                <p className="text-xs font-semibold text-blue-700 flex items-center justify-center gap-2">
+                  <Shield className="w-4 h-4" /> Zero-Knowledge Security.
+                  End-to-end encrypted.
                 </p>
               </div>
             </div>
-            <div className="pointer-events-none absolute -left-12 top-1/3 h-32 w-32 rounded-full bg-blue-600/15 blur-3xl" />
-            <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-indigo-500/15 blur-3xl" />
           </div>
         </div>
       </div>
