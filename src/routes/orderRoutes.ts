@@ -10,6 +10,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: DepositRequest }>('/deposit', {
     preHandler: partnerAuth,
     schema: {
+      security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
       summary: 'Create a deposit order (buy USDC) — returns SePay checkout session',
       body: {
@@ -39,6 +40,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: WithdrawalRequest }>('/withdrawal', {
     preHandler: partnerAuth,
     schema: {
+      security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
       summary: 'Create a withdrawal order (sell USDC) — stub, logic incomplete',
       body: {
@@ -77,6 +79,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { payment_code: string } }>('/:payment_code', {
     preHandler: partnerAuth,
     schema: {
+      security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
       summary: 'Get order status by payment code',
       params: {
@@ -115,6 +118,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { payment_code: string }; Body: { reason?: string } }>('/:payment_code/cancel', {
     preHandler: partnerAuth,
     schema: {
+      security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
       summary: 'Cancel an order by payment code',
       params: {

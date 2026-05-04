@@ -32,6 +32,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         securitySchemes: {
           SepayWebhookKey: { type: 'apiKey', in: 'header', name: 'Authorization' },
           BearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+          PartnerAppKey: { type: 'apiKey', in: 'header', name: 'partner-app-key', description: 'Partner App Key for client authentication' },
         },
       },
     },

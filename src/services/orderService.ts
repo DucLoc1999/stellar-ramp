@@ -154,8 +154,8 @@ export async function createBuyOrder(usdt_amount: number) {
     payment_code,
     direction: 'buy',
     usdt_amount: quote.usdt_amount,
-    rate: quote.rate,
-    net_vnd: quote.net_vnd,
+    rate: quote.original_rate,  // have spread
+    net_vnd: quote.net_vnd,  // have spread and fee_vnd
     fee_rate: quote.fee_rate,
     fee_vnd: quote.fee_vnd,
     payment_status: 'pending',
