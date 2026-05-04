@@ -4,10 +4,10 @@ import { loadHotWallet, executeStellarPayment, ensureTrustline, hasTrustline, DE
 import db from '../src/db';
 
 async function main() {
-  const recipient = process.env.TEST_RECIPIENT || 'GABQEQMD4XALCSMHHMUBXHSXQPWOV47WMF5F4UCUZFR7DRD37OSX7SDH';
-  const amount = process.env.TEST_AMOUNT || '10';
-  const tokenIssuer = process.env.TEST_TOKEN_ISSUER || SUPPORTED_TOKEN_ISSUER;
-  const assetCode = process.env.TEST_ASSET_CODE || DEFAULT_ASSET_CODE;
+  const recipient = 'GABQEQMD4XALCSMHHMUBXHSXQPWOV47WMF5F4UCUZFR7DRD37OSX7SDH';
+  const amount = '1';
+  const tokenIssuer = process.env.TOKEN_ADDRESS || SUPPORTED_TOKEN_ISSUER;
+  const assetCode = process.env.ASSET_CODE || DEFAULT_ASSET_CODE;
 
   const walletName = process.env.STELLAR_HOT_WALLET_NAME || 'stellar_hot_wallet';
   console.log(`Loading wallet: ${walletName}`);

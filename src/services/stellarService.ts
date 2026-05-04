@@ -20,8 +20,8 @@ const HORIZON_URLS = {
 let serverInstance: Horizon.Server | null = null;
 let networkPassphrase: string | null = null;
 
-export const SUPPORTED_TOKEN_ISSUER = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
-export const DEFAULT_ASSET_CODE = 'USDC';
+export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
 
 export function initStellarServer(network: 'testnet' | 'public' = 'testnet'): Horizon.Server {
   serverInstance = new Horizon.Server(HORIZON_URLS[network]);
@@ -32,6 +32,7 @@ export function initStellarServer(network: 'testnet' | 'public' = 'testnet'): Ho
 export function getStellarServer(): Horizon.Server {
   if (!serverInstance) {
     const network = (process.env.STELLAR_NETWORK as 'testnet' | 'public') || 'testnet';
+    console.log('Stellar server not initialized. Initializing with network:', network);
     return initStellarServer(network);
   }
   return serverInstance;
@@ -194,7 +195,7 @@ export async function disburseUSDC(
   paymentCode: string,
   tokenAddress: string
 ): Promise<DisburseResult> {
-  const assetCode = process.env.STELLAR_ASSET_CODE || 'USDC';
+  const assetCode = process.env.ASSET_CODE || 'USDC';
   const asset = new Asset(assetCode, tokenAddress);
 
   const result = await executeStellarPayment(recipientPublicKey, amount, asset);
