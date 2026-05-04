@@ -9,6 +9,7 @@ import {
 import { ExchangeRatesResponse, P2PRate, P2PHistoryPoint } from "@shared/api";
 import { SectionHeading } from "./SectionHeading";
 
+
 const CACHE_TTL = 60_000;
 const clientCache = new Map<string, { data: unknown; expiresAt: number }>();
 
@@ -41,7 +42,7 @@ function fmt(n: number | null) {
 function SkeletonCell({ right = false }: { right?: boolean }) {
   return (
     <td className={`px-6 py-5 ${right ? "text-right" : ""}`}>
-      <div className="h-4 w-20 animate-pulse rounded bg-slate-200 inline-block" />
+      <div className="h-4 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700 inline-block" />
     </td>
   );
 }
@@ -56,11 +57,6 @@ const COMPARISON_CONFIG = {
   binance: { label: "Binance P2P", color: "rgb(251 191 36)" },
   okx: { label: "OKX P2P", color: "rgb(99 102 241)" },
   bybit: { label: "Bybit P2P", color: "rgb(236 72 153)" },
-};
-
-const XLM_CHART_CONFIG = {
-  buy: { label: "XLM Mua", color: "rgb(56 189 248)" },
-  sell: { label: "XLM Bán", color: "rgb(168 85 247)" },
 };
 
 type AnyConfig = Record<string, { label: string; color: string }>;
@@ -108,7 +104,6 @@ function makeTooltip(config: AnyConfig) {
 
 const ExchangeTooltip = makeTooltip(EXCHANGE_CHART_CONFIG);
 const ComparisonTooltip = makeTooltip(COMPARISON_CONFIG);
-const XlmTooltip = makeTooltip(XLM_CHART_CONFIG);
 
 function formatLabel(ts: number): string {
   const d = new Date(ts);
@@ -367,8 +362,7 @@ export const RatesSection = () => {
   const [range, setRange] = useState<7 | 30>(7);
 
   async function load() {
-    const [xlm, usdc, binance, okx, bybit] = await Promise.all([
-      fetchCached<ExchangeRatesResponse>("/api/exchange-rate/xlm"),
+    const [usdc, binance, okx, bybit] = await Promise.all([
       fetchCached<ExchangeRatesResponse>("/api/exchange-rate"),
       fetchCached<P2PRate>("/api/binance-p2p-rate"),
       fetchCached<P2PRate>("/api/okx-p2p-rate"),
@@ -376,12 +370,6 @@ export const RatesSection = () => {
     ]);
 
     setRows([
-      {
-        asset: "XLM",
-        network: "Stellar",
-        buy: xlm?.buy ?? null,
-        sell: xlm?.sell ?? null,
-      },
       {
         asset: "USDC",
         network: "Stellar",
@@ -416,10 +404,10 @@ export const RatesSection = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const ROWS_COUNT = 5;
+  const ROWS_COUNT = 4;
 
   return (
-    <section className="relative bg-slate-50 py-24">
+    <section className="relative bg-slate-50 dark:bg-slate-900 py-24">
       <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-slate-200 to-transparent" />
       <div className="section-container space-y-6">
         <SectionHeading
@@ -430,21 +418,21 @@ export const RatesSection = () => {
         />
 
         {/* Rate table */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Asset
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Network
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Buy (VND)
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Sell (VND)
                   </th>
                 </tr>
@@ -465,19 +453,19 @@ export const RatesSection = () => {
                   : rows.map((row, i) => (
                       <tr
                         key={`${row.asset}-${row.network}`}
-                        className={`border-b border-slate-100 transition hover:bg-slate-50 ${i === rows.length - 1 ? "border-b-0" : ""}`}
+                        className={`border-b border-slate-100 dark:border-slate-700 transition hover:bg-slate-50 dark:hover:bg-slate-700/50 ${i === rows.length - 1 ? "border-b-0" : ""}`}
                       >
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-3">
                             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
                               {row.asset.slice(0, 2)}
                             </div>
-                            <span className="font-bold text-slate-900">
+                            <span className="font-bold text-slate-900 dark:text-slate-100">
                               {row.asset}
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-5 text-slate-500">
+                        <td className="px-6 py-5 text-slate-500 dark:text-slate-400">
                           {row.network}
                         </td>
                         <td className="px-6 py-5 text-right font-bold text-emerald-600">
@@ -491,8 +479,8 @@ export const RatesSection = () => {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-slate-100 bg-slate-50 px-6 py-3">
-            <p className="text-xs text-slate-400">
+          <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-6 py-3">
+            <p className="text-xs text-slate-400 dark:text-slate-500">
               Rates refresh every 60 seconds. Final rate confirmed at trade
               execution.
             </p>
@@ -515,20 +503,6 @@ export const RatesSection = () => {
             </button>
           ))}
         </div>
-
-        {/* XLM/VND chart */}
-        <ExchangeChart
-          title="XLM / VND — Stellar Ramp (Mua / Bán)"
-          historyEndpoint="/api/stellar-xlm-history"
-          range={range}
-          tall
-          config={XLM_CHART_CONFIG}
-          tooltipContent={<XlmTooltip />}
-          dataKeys={[
-            { key: "buy", color: "var(--color-buy)" },
-            { key: "sell", color: "var(--color-sell)" },
-          ]}
-        />
 
         {/* USDC our price chart */}
         <ExchangeChart
@@ -560,7 +534,7 @@ export const RatesSection = () => {
         {/* Linked with over */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
           <div className="relative z-10">
-            <h2 className="text-4xl sm:text-5xl lg:text-[56px] font-bold text-slate-900 leading-[1.15] tracking-tight mb-8 lg:mb-0">
+            <h2 className="text-4xl sm:text-5xl lg:text-[56px] font-bold text-slate-900 dark:text-slate-100 leading-[1.15] tracking-tight mb-8 lg:mb-0">
               Linked with over
               <br />
               <span className="text-emerald-500">50+ banks,</span>
@@ -570,7 +544,7 @@ export const RatesSection = () => {
           </div>
 
           <div className="relative w-full flex justify-center lg:justify-end">
-            <div className="relative bg-white/50 backdrop-blur-sm p-4 sm:p-8 rounded-[2rem] border border-slate-200/60 shadow-inner w-full max-w-[600px]">
+            <div className="relative bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm p-4 sm:p-8 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-inner w-full max-w-[600px]">
               <div className="absolute inset-0 rounded-[2rem] shadow-[inset_0_0_20px_rgba(0,0,0,0.02)] border border-white/80" />
               <img
                 src="/payment_methods_logos.png"

@@ -13,4 +13,3 @@ export const handleBinanceP2PHistory = historyHandler("binance");
 export const handleOKXP2PHistory = historyHandler("okx");
 export const handleBybitP2PHistory = historyHandler("bybit");
 export const handleOurPriceHistory = historyHandler("our");
-export const handleStellarXlmHistory = historyHandler("stellar");

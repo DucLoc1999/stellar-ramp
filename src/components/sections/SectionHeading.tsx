@@ -27,18 +27,18 @@ export const SectionHeading = ({
       }`}
     >
       {eyebrow ? (
-        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-slate-700">
+        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
           {eyebrow}
         </span>
       ) : null}
       <h2
-        className={`text-3xl font-extrabold sm:text-4xl ${light ? "text-white" : "text-slate-900"}`}
+        className={`text-3xl font-extrabold sm:text-4xl ${light ? "text-white" : "text-slate-900 dark:text-slate-100"}`}
       >
         {title}
       </h2>
       {description ? (
         <p
-          className={`text-base sm:text-lg ${light ? "text-slate-300" : "text-slate-500"}`}
+          className={`text-base sm:text-lg ${light ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}
         >
           {description}
         </p>

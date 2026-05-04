@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "path";
 
-export type Exchange = "binance" | "okx" | "bybit" | "our" | "stellar";
+export type Exchange = "binance" | "okx" | "bybit" | "our";
 export type TradeType = "buy" | "sell";
 
 export interface P2PSnapshot {
@@ -39,7 +39,7 @@ if (isEmpty) {
   const insert = db.prepare(
     "INSERT INTO p2p_prices (exchange, trade_type, asset, fiat, best_price, created_at) VALUES (?, ?, ?, ?, ?, ?)"
   );
-  const MOCK_CONFIG: Record<Exclude<Exchange, "stellar">, { buyBase: number; sellBase: number; drift: number }> = {
+  const MOCK_CONFIG: Record<Exchange, { buyBase: number; sellBase: number; drift: number }> = {
     binance: { buyBase: 25_700, sellBase: 25_900, drift: 300 },
     okx:     { buyBase: 25_650, sellBase: 25_850, drift: 280 },
     bybit:   { buyBase: 25_680, sellBase: 25_880, drift: 320 },
@@ -47,7 +47,6 @@ if (isEmpty) {
   };
   const now = Date.now();
 
-  // XLM: downtrend from ~4900 (day 29) to ~4400 (today), noise ±30 VND, spread ~50
   for (let day = 29; day >= 0; day--) {
     const ts = now - day * 24 * 60 * 60 * 1000;
     const noise = Math.sin(day * 0.7) * 0.5 + Math.cos(day * 1.3) * 0.5;
@@ -56,10 +55,6 @@ if (isEmpty) {
       insert.run(exchange, "buy",  "USDC", "VND", Math.round(buyBase  + noise * drift), ts);
       insert.run(exchange, "sell", "USDC", "VND", Math.round(sellBase + noise * drift), ts);
     }
-    // day counts down from 29→0, so (29 - day) goes 0→29 giving a falling price over time
-    const xlmMid = 4_900 - (29 - day) * (500 / 29) + noise * 30;
-    insert.run("stellar", "buy",  "XLM", "VND", Math.round(xlmMid - 25), ts);
-    insert.run("stellar", "sell", "XLM", "VND", Math.round(xlmMid + 25), ts);
   }
 
   for (let hour = 23; hour >= 0; hour--) {
@@ -70,10 +65,6 @@ if (isEmpty) {
       insert.run(exchange, "buy",  "USDC", "VND", Math.round(buyBase  + noise * drift * 0.3), ts);
       insert.run(exchange, "sell", "USDC", "VND", Math.round(sellBase + noise * drift * 0.3), ts);
     }
-    // today's hourly range ~4400 ±10
-    const xlmMid = 4_400 + noise * 10;
-    insert.run("stellar", "buy",  "XLM", "VND", Math.round(xlmMid - 25), ts);
-    insert.run("stellar", "sell", "XLM", "VND", Math.round(xlmMid + 25), ts);
   }
 }
 

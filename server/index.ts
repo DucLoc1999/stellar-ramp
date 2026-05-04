@@ -4,9 +4,8 @@ import cors from "cors";
 import { handleBinanceP2PRate } from "./routes/binanceP2P";
 import { handleOKXP2PRate } from "./routes/okxP2P";
 import { handleBybitP2PRate } from "./routes/bybitP2P";
-import { handleBinanceP2PHistory, handleOKXP2PHistory, handleBybitP2PHistory, handleOurPriceHistory, handleStellarXlmHistory } from "./routes/p2pHistory";
+import { handleBinanceP2PHistory, handleOKXP2PHistory, handleBybitP2PHistory, handleOurPriceHistory } from "./routes/p2pHistory";
 import { handleExchangeRate } from "./routes/exchangeRate";
-import { handleXlmExchangeRate } from "./routes/xlmExchangeRate";
 
 export function createServer() {
   const app = express();
@@ -20,7 +19,6 @@ export function createServer() {
   });
 
   app.get("/api/exchange-rate", handleExchangeRate);
-  app.get("/api/exchange-rate/xlm", handleXlmExchangeRate);
   app.get("/api/binance-p2p-rate", handleBinanceP2PRate);
   app.get("/api/okx-p2p-rate", handleOKXP2PRate);
   app.get("/api/bybit-p2p-rate", handleBybitP2PRate);
@@ -28,7 +26,6 @@ export function createServer() {
   app.get("/api/binance-p2p-history", handleBinanceP2PHistory);
   app.get("/api/okx-p2p-history", handleOKXP2PHistory);
   app.get("/api/bybit-p2p-history", handleBybitP2PHistory);
-  app.get("/api/stellar-xlm-history", handleStellarXlmHistory);
 
   return app;
 }

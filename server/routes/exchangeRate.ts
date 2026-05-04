@@ -1,36 +1,23 @@
 import { RequestHandler } from "express";
-import { readFileSync } from "fs";
-import { resolve } from "path";
-import { getLatestBinancePrice, insertSnapshot } from "../db";
+import { insertSnapshot } from "../db";
 
-const CONFIG_PATH = resolve("config.json");
+const RATE_API_URL = "https://payment-api.dev.seerbot.io/api/rate/usdt_vnd";
 
-function readSpreads(): { buySpread: number; sellSpread: number } {
+export const handleExchangeRate: RequestHandler = async (_req, res) => {
+  let data: { created_at: string; buy: number; sell: number; fee_rate_buy: number; fee_rate_sell: number };
+
   try {
-    const config = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
-    return {
-      buySpread: Number(config.buySpread) || 1,
-      sellSpread: Number(config.sellSpread) || 1,
-    };
-  } catch {
-    return { buySpread: 1, sellSpread: 1 };
-  }
-}
-
-export const handleExchangeRate: RequestHandler = (_req, res) => {
-  const buyPrice = getLatestBinancePrice("buy");
-  const sellPrice = getLatestBinancePrice("sell");
-
-  if (buyPrice === null || sellPrice === null) {
-    return void res.status(503).json({ error: "No price data available yet" });
+    const response = await fetch(RATE_API_URL, { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error(`API responded with ${response.status}`);
+    data = await response.json();
+  } catch (err) {
+    return void res.status(503).json({ error: "Failed to fetch rate data" });
   }
 
-  const { buySpread, sellSpread } = readSpreads();
-  const buy = Math.round(buyPrice * buySpread);
-  const sell = Math.round(sellPrice * sellSpread);
+  const { buy, sell, fee_rate_buy, fee_rate_sell, created_at } = data;
 
   insertSnapshot({ exchange: "our", trade_type: "buy", asset: "USDC", fiat: "VND", best_price: buy });
   insertSnapshot({ exchange: "our", trade_type: "sell", asset: "USDC", fiat: "VND", best_price: sell });
 
-  res.json({ buy, sell, buySpread, sellSpread, created_at: new Date().toISOString() });
+  res.json({ buy, sell, fee_rate_buy, fee_rate_sell, created_at });
 };

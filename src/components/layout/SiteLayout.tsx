@@ -5,7 +5,7 @@ import { ScrollToTopButton } from '../ui/ScrollToTopButton';
 
 export const SiteLayout = ({ children }: { children: ReactNode }) => {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+    <div className="flex min-h-screen flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <SiteHeader />
       <main className="relative isolate flex-1">
         <div

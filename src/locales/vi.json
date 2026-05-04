@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "whyStellarRamp": "Tại sao chọn Stellar Ramp?",
+    "process": "Quy trình",
+    "liveRates": "Tỷ giá trực tiếp",
+    "faq": "Câu hỏi thường gặp",
+    "contactSupport": "Liên hệ hỗ trợ",
+    "buySell": "Mua/Bán"
+  },
+  "hero": {
+    "badge": "BOT TELEGRAM 24/7",
+    "title1": "Cách nhanh nhất để",
+    "title2": "Mua & Bán",
+    "title3": "bằng VND",
+    "description": "Nạp và rút tiền tức thì qua Bot Telegram phi lưu ký của chúng tôi. Nhận VND trực tiếp vào tài khoản ngân hàng nội địa trong vài phút.",
+    "zeroFees": "Không phí ẩn.",
+    "cta": "Mua/Bán trên Telegram",
+    "feature1": "Chuyển khoản ngân hàng 24/7",
+    "feature2": "Xử lý trong 3-30 giây",
+    "feature3": "An toàn & Minh bạch",
+    "systemOverview": "Tổng quan hệ thống",
+    "botStatus": "Trạng thái Bot: Hoạt động 24/7",
+    "supportedBanks": "Ngân hàng VN được hỗ trợ",
+    "supportedAssets": "Tài sản được hỗ trợ",
+    "avgProcessing": "Thời gian xử lý trung bình",
+    "liveRates": "Tỷ giá VND trực tiếp",
+    "buy": "Mua",
+    "sell": "Bán",
+    "youPay": "Bạn trả",
+    "youReceive": "Bạn nhận",
+    "fee": "Phí",
+    "nextRefresh": "Làm mới tiếp theo",
+    "zeroKnowledge": "Bảo mật Zero-Knowledge. Mã hóa đầu cuối."
+  },
+  "features": {
+    "eyebrow": "TẠI SAO CHỌN STELLAR RAMP?",
+    "title": "Được xây dựng cho nhà giao dịch Việt Nam",
+    "items": [
+      {
+        "title": "Thực thi cực nhanh",
+        "description": "Công cụ khớp lệnh tự động thanh toán VND trực tiếp vào tài khoản ngân hàng của bạn trong vài giây."
+      },
+      {
+        "title": "Tỷ giá VND tốt nhất",
+        "description": "Chúng tôi tổng hợp thanh khoản để đảm bảo mức chênh lệch thấp nhất cho USDC."
+      },
+      {
+        "title": "Bảo mật tuyệt đối",
+        "description": "Thiết kế phi lưu ký. Bạn giữ khóa riêng, chúng tôi xử lý việc định tuyến tiền pháp định."
+      },
+      {
+        "title": "Hỗ trợ địa phương 24/7",
+        "description": "Đội ngũ hỗ trợ người Việt chuyên dụng, luôn sẵn sàng trực tiếp trong Telegram."
+      }
+    ]
+  },
+  "howItWorks": {
+    "eyebrow": "CÁCH THỨC HOẠT ĐỘNG",
+    "title": "Từ Crypto sang VND trong 3 bước",
+    "cta": "📊 Mua/Bán ngay",
+    "steps": [
+      {
+        "title": "📱 Mở Telegram và tìm @StellarRampBot",
+        "description": "👉 Nhấn \"Start\" để kích hoạt bot và hoàn tất xác minh KYC nhanh chóng."
+      },
+      {
+        "title": "💱 Chọn Mua hoặc Bán — xác nhận & nhận tiền",
+        "description": "Chọn USDC, nhập số lượng, xác nhận tỷ giá và tiền được thanh toán trong vài giây."
+      }
+    ],
+    "mockup": {
+      "step1": "Bước 1 — Khởi động Bot",
+      "step2": "Bước 2 — Xác minh danh tính",
+      "step3": "Bước 3 — Mua hoặc Bán",
+      "botName": "Stellar Ramp Bot",
+      "botLabel": "bot",
+      "start": "/start",
+      "welcome": "👋 Chào mừng đến với <b>Stellar Ramp</b>!",
+      "welcomeTagline": "Cách nhanh nhất để giao dịch Crypto với VND.",
+      "liveRates": "📊 <b>Tỷ giá trực tiếp:</b>",
+      "liveRatesValue": "USDC: 25.450 VND",
+      "kycTitle": "🪪 <b>Xác minh danh tính</b>",
+      "kycBody": "Để tuân thủ quy định, vui lòng hoàn tất xác minh KYC nhanh chóng.",
+      "kycNeeds": "Bạn sẽ cần:",
+      "kycItem1": "Họ tên đầy đủ & ngày sinh",
+      "kycItem2": "Số điện thoại",
+      "kycItem3": "Ảnh giấy tờ tùy thân do chính phủ cấp",
+      "kycButton": "✅ Bắt đầu xác minh KYC",
+      "kycSubtitle": "Thiết lập một lần · Mất khoảng 2 phút",
+      "menuPrompt": "Hôm nay bạn muốn làm gì? 👇",
+      "buyButton": "🟢 Mua USDC bằng VND",
+      "sellButton": "🔴 Bán USDC lấy VND",
+      "bankButton": "🔗 Kiểm tra liên kết ngân hàng"
+    },
+    "illustrativeNote": "Hình ảnh chỉ mang tính minh họa"
+  },
+  "rates": {
+    "eyebrow": "Tỷ giá trực tiếp",
+    "title": "Tỷ giá hối đoái minh bạch, theo thời gian thực",
+    "description": "Tỷ giá được cập nhật liên tục. Không có chênh lệch ẩn — những gì bạn thấy là những gì bạn nhận được.",
+    "asset": "Tài sản",
+    "network": "Mạng lưới",
+    "buyVnd": "Mua (VND)",
+    "sellVnd": "Bán (VND)",
+    "refreshNote": "Tỷ giá làm mới mỗi 60 giây. Tỷ giá cuối cùng được xác nhận khi thực hiện giao dịch.",
+    "linkedWith": "Liên kết với hơn",
+    "banks": "50+ ngân hàng,",
+    "ewallets": "7+ ví điện tử",
+    "noHistory": "Chưa có dữ liệu lịch sử"
+  },
+  "feedback": {
+    "eyebrow": "PHẢN HỒI NGƯỜI DÙNG",
+    "title": "Được cộng đồng OTC tin tưởng",
+    "description": "Người dùng yêu thích tốc độ, tỷ giá minh bạch và đội ngũ hỗ trợ luôn sẵn sàng giúp đỡ của chúng tôi.",
+    "items": [
+      {
+        "quote": "Mua USDC siêu nhanh, nhận tiền trong chưa đầy 5 phút.",
+        "name": "Thái Anh",
+        "role": "Nhà giao dịch OTC"
+      },
+      {
+        "quote": "Bot Telegram dễ sử dụng và tỷ giá hoàn toàn minh bạch.",
+        "name": "Duy Thanh",
+        "role": "Nhà đầu tư"
+      },
+      {
+        "quote": "Hỗ trợ 24/7 thực sự, gửi nhầm mạng và được giúp đỡ ngay lập tức.",
+        "name": "Đỗ Hùng",
+        "role": "Người bán POD"
+      },
+      {
+        "quote": "Tỷ giá tốt nhất thị trường với giao dịch hoàn toàn minh bạch.",
+        "name": "Lan Anh",
+        "role": "Nhà sáng tạo nội dung"
+      },
+      {
+        "quote": "Rút tiền nhanh, không bị kẹt lệnh như các nền tảng khác.",
+        "name": "Đức Hiếu",
+        "role": "Dropshipper"
+      },
+      {
+        "quote": "Hệ thống cực kỳ ổn định — chưa bao giờ gặp bất kỳ sự cố kỹ thuật nào.",
+        "name": "Nguyễn Nam",
+        "role": "Freelancer"
+      }
+    ]
+  },
+  "faq": {
+    "eyebrow": "CÂU HỎI THƯỜNG GẶP",
+    "title": "Câu hỏi thường gặp",
+    "aboutUs": "VỀ CHÚNG TÔI",
+    "aboutTitle": "Stellar Ramp – Cầu nối tới Web3",
+    "aboutDescription": "Chúng tôi kết nối Web3 với tài chính Việt Nam thông qua các cổng phi lưu ký an toàn, chuyển tiền pháp định nhanh chóng với tỷ giá tốt nhất.",
+    "items": [
+      {
+        "question": "Stellar Ramp có an toàn cho giao dịch crypto phi lưu ký và định tuyến tiền pháp định bảo mật vào tài khoản ngân hàng không?",
+        "answer": "Hoàn toàn. Stellar Ramp hoạt động theo mô hình phi lưu ký. Chúng tôi không bao giờ giữ tài sản crypto của bạn. Hợp đồng thông minh và công cụ khớp lệnh tự động đảm bảo tiền pháp định được định tuyến an toàn và trực tiếp đến tài khoản ngân hàng bạn cung cấp."
+      },
+      {
+        "question": "Việc rút VND từ Stellar Ramp mất bao lâu sau khi giao dịch được xác nhận trên chuỗi?",
+        "answer": "Nhờ tích hợp NAPAS trực tiếp, 99% lệnh rút VND được xử lý và thanh toán vào tài khoản ngân hàng nội địa Việt Nam của bạn trong vòng 3 đến 30 giây sau khi giao dịch blockchain được xác nhận."
+      },
+      {
+        "question": "Có giới hạn giao dịch USDC không, và tài khoản đã xác minh có thể tăng hạn mức mỗi giao dịch nhanh như thế nào?",
+        "answer": "Tài khoản chưa xác minh có thể giao dịch tối đa $500 mỗi ngày. Bằng cách hoàn tất xác minh cơ bản nhanh chóng trong bot, bạn có thể tăng hạn mức lên đến $100,000 mỗi giao dịch cho nhu cầu quy mô tổ chức."
+      },
+      {
+        "question": "Bot Telegram có hoạt động trong các ngày lễ Việt Nam không, để bạn có thể nạp và rút tiền mà không bị chậm trễ?",
+        "answer": "Có! Hệ thống của chúng tôi hoàn toàn tự động và hoạt động 24/7/365. Bạn có thể nạp và rút tiền trong dịp Tết, cuối tuần và giữa đêm mà không có bất kỳ sự chậm trễ nào."
+      }
+    ]
+  },
+  "finalCta": {
+    "title": "Sẵn sàng giao dịch USDC an toàn và tức thì?",
+    "description": "Tham gia StellarRamp và trải nghiệm giao dịch crypto-sang-VND tự động trong vài giây. Không cần tải ứng dụng. Không phí ẩn.",
+    "openBot": "Mở bot trên Telegram",
+    "contactSupport": "Liên hệ hỗ trợ"
+  },
+  "footer": {
+    "termsOfService": "Điều khoản dịch vụ",
+    "privacyPolicy": "Chính sách bảo mật",
+    "apiPartners": "Đối tác API",
+    "joinCommunity": "📱 Tham gia cộng đồng",
+    "copyright": "© 2026 Orbit Labs. Bảo lưu mọi quyền."
+  }
+}

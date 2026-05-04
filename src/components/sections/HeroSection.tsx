@@ -1,11 +1,11 @@
-import { CheckCircle2, Shield, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CheckCircle2, Shield } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ExchangeRatesResponse } from "@shared/api";
 
 const BOT_URL =
   import.meta.env.VITE_TELEGRAM_LINK || "https://t.me/usdt247shopbot";
 
-// Module-level 1-minute client cache — persists across re-renders, cleared on page reload
 const CACHE_TTL = 60_000;
 const clientCache = new Map<
   string,
@@ -27,63 +27,27 @@ async function fetchRate(url: string): Promise<ExchangeRatesResponse | null> {
   }
 }
 
-function RatePair({
-  label,
-  data,
-  loading,
-}: {
-  label: string;
-  data: ExchangeRatesResponse | null;
-  loading: boolean;
-}) {
-  const fmt = (n: number) => n.toLocaleString("vi-VN");
-  return (
-    <div>
-      <p className="text-xs font-bold text-slate-500 tracking-wider mb-2">
-        {label}
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white rounded-lg p-2.5 border border-slate-200 shadow-sm text-center">
-          <span className="block text-xs text-slate-500 mb-1 font-medium">
-            Buy
-          </span>
-          <span className="block font-bold text-emerald-600 text-sm">
-            {loading ? "..." : data ? `${fmt(data.buy)} ₫` : "N/A"}
-          </span>
-        </div>
-        <div className="bg-white rounded-lg p-2.5 border border-slate-200 shadow-sm text-center">
-          <span className="block text-xs text-slate-500 mb-1 font-medium">
-            Sell
-          </span>
-          <span className="block font-bold text-red-500 text-sm">
-            {loading ? "..." : data ? `${fmt(data.sell)} ₫` : "N/A"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export const HeroSection = () => {
-  const [xlmRates, setXlmRates] = useState<ExchangeRatesResponse | null>(null);
-  const [usdcRates, setUsdcRates] = useState<ExchangeRatesResponse | null>(
-    null,
-  );
+  const { t } = useTranslation();
+  const [usdcRates, setUsdcRates] = useState<ExchangeRatesResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<"buy" | "sell">("buy");
+  const [usdcBuyInput, setUsdcBuyInput] = useState("");
+  const [usdcSellInput, setUsdcSellInput] = useState("");
+  const [progress, setProgress] = useState(100);
+  const lastFetchRef = useRef<number>(Date.now());
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
-      const [xlm, usdc] = await Promise.all([
-        fetchRate("/api/exchange-rate/xlm"),
-        fetchRate("/api/exchange-rate"),
-      ]);
+      const usdc = await fetchRate("/api/exchange-rate");
       if (!cancelled) {
-        setXlmRates(xlm);
         setUsdcRates(usdc);
         setLoading(false);
+        lastFetchRef.current = Date.now();
+        setProgress(100);
       }
     }
 
@@ -95,29 +59,59 @@ export const HeroSection = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const elapsed = Date.now() - lastFetchRef.current;
+      setProgress(Math.max(0, (1 - elapsed / CACHE_TTL) * 100));
+    }, 250);
+    return () => clearInterval(tick);
+  }, []);
+
+  const secondsLeft = Math.ceil((progress / 100) * 60);
+  const fmt4 = (n: number) =>
+    n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const parse = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
+
+  const usdcNum = parse(mode === "buy" ? usdcBuyInput : usdcSellInput);
+
+  // Buy mode: VND input → crypto output
+  const usdcOut = usdcRates && usdcNum > 0
+    ? fmt4(usdcNum / usdcRates.buy)
+    : "";
+
+  // Sell mode: crypto input → VND output
+  const usdcSellOut = usdcRates && usdcNum > 0
+    ? (usdcNum * usdcRates.sell).toLocaleString("vi-VN")
+    : "";
+
+  // Fees: 0.8% of the VND value of each transaction
+  const FEE_RATE = 0.008;
+  const fmtVnd = (n: number) => n.toLocaleString("vi-VN");
+  const usdcVnd = mode === "buy" ? usdcNum : usdcNum * (usdcRates?.sell ?? 0);
+  const usdcFee = usdcVnd > 0 ? fmtVnd(Math.round(usdcVnd * FEE_RATE)) : "";
+
   return (
     <section
       id="hero"
-      className="relative pt-20 pb-32 overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100/50"
+      className="relative pt-20 pb-32 overflow-hidden bg-linear-to-b from-slate-50 to-slate-100/50 dark:from-slate-900 dark:to-slate-900"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Left Column */}
           <div className="max-w-2xl">
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold tracking-wide uppercase bg-blue-100 text-blue-700 mb-6 border border-blue-200">
-              24/7 TELEGRAM BOT
+              {t("hero.badge")}
             </span>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 leading-tight mb-6">
-              The fastest way to <br className="hidden sm:block" />
-              Buy & Sell <span className="text-blue-600">XLM & USDC</span>{" "}
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 dark:text-slate-100 leading-tight mb-6">
+              {t("hero.title1")} <br className="hidden sm:block" />
+              {t("hero.title2")} <span className="text-blue-600">USDC</span>{" "}
               <br className="hidden sm:block" />
-              with VND
+              {t("hero.title3")}
             </h1>
-            <p className="text-lg text-slate-600 mb-8 leading-relaxed max-w-xl">
-              Instantly on-ramp and off-ramp via our non-custodial Telegram Bot.
-              Receive VND directly to your local bank account in minutes.{" "}
-              <span className="font-semibold text-slate-800">
-                Zero hidden fees.
+            <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 leading-relaxed max-w-xl">
+              {t("hero.description")}{" "}
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {t("hero.zeroFees")}
               </span>
             </p>
             <div className="flex flex-col sm:flex-row gap-4 mb-10">
@@ -127,37 +121,37 @@ export const HeroSection = () => {
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center px-8 py-3.5 border border-transparent rounded-lg shadow-sm text-base font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all duration-200 transform hover:-translate-y-1"
               >
-                Buy/Sell on Telegram
+                {t("hero.cta")}
               </a>
             </div>
-            <ul className="space-y-4 text-sm font-medium text-slate-700">
+            <ul className="space-y-4 text-sm font-medium text-slate-700 dark:text-slate-300">
               <li className="flex items-center">
-                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 flex-shrink-0" />
-                24/7 Bank Transfers
+                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 shrink-0" />
+                {t("hero.feature1")}
               </li>
               <li className="flex items-center">
-                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 flex-shrink-0" />
-                3-30s Processing
+                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 shrink-0" />
+                {t("hero.feature2")}
               </li>
               <li className="flex items-center">
-                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 flex-shrink-0" />
-                Secure & Transparent
+                <CheckCircle2 className="text-indigo-600 mr-3 w-5 h-5 shrink-0" />
+                {t("hero.feature3")}
               </li>
             </ul>
           </div>
 
           {/* Right Column - Card */}
           <div className="relative w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-2xl blur opacity-25"></div>
-            <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl overflow-hidden relative border border-slate-200">
+            <div className="absolute -inset-1 bg-linear-to-r from-blue-400 to-indigo-500 rounded-2xl blur opacity-25"></div>
+            <div className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-xl overflow-hidden relative border border-slate-200 dark:bg-slate-800/90 dark:border-slate-700">
               {/* Card Header */}
-              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-800">
-                  System Overview
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  {t("hero.systemOverview")}
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Bot Status: Active 24/7
+                  {t("hero.botStatus")}
                 </span>
               </div>
 
@@ -165,18 +159,15 @@ export const HeroSection = () => {
               <div className="p-6 space-y-5">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-medium">
-                    Supported VN Banks
+                    {t("hero.supportedBanks")}
                   </span>
-                  <span className="font-bold text-slate-900">50+</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">50+</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-medium">
-                    Supported Assets
+                    {t("hero.supportedAssets")}
                   </span>
-                  <span className="font-bold text-slate-900 flex items-center gap-2">
-                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">
-                      XLM
-                    </span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-200 text-blue-700">
                       USDC
                     </span>
@@ -184,32 +175,116 @@ export const HeroSection = () => {
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-medium">
-                    Avg Processing
+                    {t("hero.avgProcessing")}
                   </span>
                   <span className="font-bold text-indigo-600">3-30s</span>
                 </div>
               </div>
 
-              {/* Live Rates Section */}
-              <div className="bg-slate-100/80 p-6 border-t border-slate-200">
-                <p className="text-xs font-bold text-slate-500 tracking-wider mb-4 uppercase">
-                  Live VND Rates
-                </p>
-                <div className="space-y-4">
-                  <RatePair
-                    label="USDC/VND"
-                    data={usdcRates}
-                    loading={loading}
-                  />
-                  <RatePair label="XLM/VND" data={xlmRates} loading={loading} />
+              {/* Live Rate Converter */}
+              <div className="bg-slate-100/80 dark:bg-slate-900/60 p-6 border-t border-slate-200 dark:border-slate-700">
+                {/* Header row with pill toggle */}
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
+                    {t("hero.liveRates")}
+                  </p>
+                  <div className="relative flex rounded-full bg-slate-200 dark:bg-slate-700 p-0.5 text-xs font-semibold">
+                    <div
+                      className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full transition-all duration-200 ${
+                        mode === "buy"
+                          ? "left-0.5 bg-emerald-500"
+                          : "left-[calc(50%+2px)] bg-red-500"
+                      }`}
+                    />
+                    <button
+                      onClick={() => setMode("buy")}
+                      className={`relative z-10 px-3 py-1 rounded-full transition-colors ${
+                        mode === "buy" ? "text-white" : "text-slate-500"
+                      }`}
+                    >
+                      {t("hero.buy")}
+                    </button>
+                    <button
+                      onClick={() => setMode("sell")}
+                      className={`relative z-10 px-3 py-1 rounded-full transition-colors ${
+                        mode === "sell" ? "text-white" : "text-slate-500"
+                      }`}
+                    >
+                      {t("hero.sell")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Input / Output rows */}
+                <div className="space-y-2 mb-3">
+                  {/* Column labels */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <span className="text-xs text-slate-400 font-medium px-1">{t("hero.youPay")}</span>
+                    <span className="text-xs text-slate-400 font-medium px-1">{t("hero.youReceive")}</span>
+                  </div>
+
+                  {/* USDC row */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={mode === "buy" ? usdcBuyInput : usdcSellInput}
+                        onChange={(e) => mode === "buy" ? setUsdcBuyInput(e.target.value) : setUsdcSellInput(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent"
+                      />
+                      <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
+                        {mode === "buy" ? "VND" : "USDC"}
+                      </span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+                      <span className="block px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-400 truncate">
+                        {loading ? "…" : (mode === "buy" ? usdcOut : usdcSellOut) || "0"}
+                      </span>
+                      <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
+                        {mode === "buy" ? "USDC" : "VND"}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 px-1">
+                    {t("hero.fee")}: <span className="font-semibold text-slate-500">{usdcFee || "0"} ₫</span> (0.8%)
+                  </p>
+                </div>
+
+                {/* Rate hint */}
+                <div className="mb-4 text-xs text-slate-400 dark:text-slate-500 flex gap-3 flex-wrap">
+                  {usdcRates && (
+                    <span>
+                      1 USDC ={" "}
+                      <span className={`font-semibold ${mode === "buy" ? "text-emerald-600" : "text-red-500"}`}>
+                        {(mode === "buy" ? usdcRates.buy : usdcRates.sell).toLocaleString("vi-VN")} ₫
+                      </span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Refresh progress bar */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-slate-400 dark:text-slate-500">{t("hero.nextRefresh")}</span>
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {secondsLeft}s
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* Security Section */}
-              <div className="bg-blue-50 px-6 py-4 border-t border-blue-100 text-center">
+              <div className="bg-blue-50 dark:bg-blue-950/40 px-6 py-4 border-t border-blue-100 dark:border-blue-900 text-center">
                 <p className="text-xs font-semibold text-blue-700 flex items-center justify-center gap-2">
-                  <Shield className="w-4 h-4" /> Zero-Knowledge Security.
-                  End-to-end encrypted.
+                  <Shield className="w-4 h-4" /> {t("hero.zeroKnowledge")}
                 </p>
               </div>
             </div>
