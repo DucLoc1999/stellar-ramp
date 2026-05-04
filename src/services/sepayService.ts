@@ -18,32 +18,28 @@ export interface SepayWebhookPayload {
 }
 
 function extractCodeFromContent(content: string): string | null {
-  const match = content.match(/^([A-Z]{2}\d{6,10})\s/);
-  return match ? match[1] : null;
+  const match = content.match(/DH\d{6,10}/);
+  return match ? match[0] : null;
 }
 
 export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<void> {
-  console.log('[sepay-webhook] payload:', JSON.stringify(payload));
   if (!payload.gateway || !payload.id) return;
   if (payload.transferType !== 'in') return;
 
   const existing = await db('webhook_logs')
     .where({ sepay_transaction_id: payload.id })
     .first();
+  console.log('[sepay-webhook] existing:', existing);
   if (existing) return;
 
   await db('webhook_logs').insert({
     sepay_transaction_id: payload.id,
     body: JSON.stringify(payload),
   });
-
   const paymentCode = payload.code ?? extractCodeFromContent(payload.content);
-  console.log('[sepay-webhook] paymentCode:', paymentCode);
   if (!paymentCode) return;
 
-  console.log('[sepay-webhook] paymentCode:', paymentCode);
   const order = await db('orders').where({ payment_code: paymentCode }).first();
-  console.log('[sepay-webhook] order found:', !!order);
   if (!order) return;
 
   if (order.last_webhook_id && String(order.last_webhook_id) === String(payload.id)) {

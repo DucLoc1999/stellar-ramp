@@ -42,12 +42,14 @@ async function getBankInfo(): Promise<SepayBankInfo> {
     getConfig('bank_name'),
     getConfig('bank_short'),
   ]);
-  return {
-    account_number: va_number ?? process.env.SEPAY_VA_NUMBER ?? '8825882089',
-    account_holder_name: va_holder ?? process.env.SEPAY_VA_HOLDER ?? 'NGUYEN DUC LOC',
-    bank_name: bank_name ?? process.env.SEPAY_BANK_NAME ?? 'BIDV',
-    bank_short_name: bank_short ?? process.env.SEPAY_BANK_SHORT ?? 'BIDV',
-  };
+  const bankInfo = {
+    account_number: va_number ?? process.env.SEPAY_VA_NUMBER ?? '',
+    account_holder_name: va_holder ?? process.env.SEPAY_VA_HOLDER ?? '',
+    bank_name: bank_name ?? process.env.SEPAY_BANK_NAME ?? '',
+    bank_short_name: bank_short ?? process.env.SEPAY_BANK_SHORT ?? '',
+  }
+  console.log("bank info", bankInfo);
+  return bankInfo;
 }
 
 export async function createSepayOrder(params: {

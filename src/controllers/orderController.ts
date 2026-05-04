@@ -17,8 +17,25 @@ export async function handleDeposit(
   if (!amount || amount <= 0) {
     return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
   }
-  const data = await createDeposit(req.body, { clientIp: req.ip });
-  return reply.send({ success: true, data });
+  try {
+    const data = await createDeposit(req.body, { clientIp: req.ip });
+    return reply.send({ success: true, data });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg === 'RECIPIENT_NO_TRUSTLINE') {
+      return createErrorReply(reply, 'RECIPIENT_NO_TRUSTLINE', 'Recipient wallet does not have a trustline for USDC. Please set up a trustline before depositing.', req.id);
+    }
+    if (errMsg === 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED') {
+      return createErrorReply(reply, 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED', 'Recipient trustline is not authorized for receiving USDC', req.id);
+    }
+    if (errMsg === 'RECIPIENT_INSUFFICIENT_LIMIT') {
+      return createErrorReply(reply, 'RECIPIENT_INSUFFICIENT_LIMIT', 'Recipient trustline limit is insufficient for this deposit amount', req.id);
+    }
+    if (errMsg === 'UNSUPPORTED_TOKEN') {
+      return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
+    }
+    throw error;
+  }
 }
 
 export async function handleWithdrawal(

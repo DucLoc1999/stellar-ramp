@@ -33,6 +33,8 @@ export const ErrorCodes = {
   CHAIN_EVENT_MISMATCH: { code: 'CHAIN_EVENT_MISMATCH', statusCode: 400, retriable: false },
   UNSUPPORTED_TOKEN: { code: 'UNSUPPORTED_TOKEN', statusCode: 400, retriable: false },
   RECIPIENT_NO_TRUSTLINE: { code: 'RECIPIENT_NO_TRUSTLINE', statusCode: 400, retriable: false },
+  RECIPIENT_TRUSTLINE_NOT_AUTHORIZED: { code: 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED', statusCode: 400, retriable: false },
+  RECIPIENT_INSUFFICIENT_LIMIT: { code: 'RECIPIENT_INSUFFICIENT_LIMIT', statusCode: 400, retriable: false },
 } as const;
 
 export function createErrorReply(

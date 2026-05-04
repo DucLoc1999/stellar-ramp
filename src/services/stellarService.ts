@@ -7,6 +7,8 @@ import {
   Networks,
   BASE_FEE,
   Transaction,
+  StrKey,
+  xdr,
 } from '@stellar/stellar-sdk';
 import db from '../db';
 import { decrypt } from './encryptionService';
@@ -17,7 +19,13 @@ const HORIZON_URLS = {
   public: 'https://horizon.stellar.org',
 };
 
+const RPC_URLS: Record<string, string> = {
+  testnet: 'https://soroban-testnet.stellar.org',
+  public: 'https://soroban-rpc.mainnet.stellar.gateway.fm',
+};
+
 let serverInstance: Horizon.Server | null = null;
+let rpcServerInstance: any = null;
 let networkPassphrase: string | null = null;
 
 export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
@@ -36,6 +44,33 @@ export function getStellarServer(): Horizon.Server {
     return initStellarServer(network);
   }
   return serverInstance;
+}
+
+let RpcServerClass: any = null;
+
+function getRpcServerClass() {
+  if (!RpcServerClass) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const rpcModule = require('@stellar/stellar-sdk/rpc');
+    RpcServerClass = rpcModule.Server;
+  }
+  return RpcServerClass;
+}
+
+export function initRpcServer(network: 'testnet' | 'public' = 'testnet') {
+  const RpcServer = getRpcServerClass();
+  const url = RPC_URLS[network];
+  rpcServerInstance = new RpcServer(url);
+  return rpcServerInstance;
+}
+
+export function getRpcServer() {
+  if (!rpcServerInstance) {
+    const network = (process.env.STELLAR_NETWORK as 'testnet' | 'public') || 'testnet';
+    console.log('RPC server not initialized. Initializing with network:', network);
+    return initRpcServer(network);
+  }
+  return rpcServerInstance;
 }
 
 export async function loadHotWallet() {
@@ -68,15 +103,83 @@ export interface TrustlineResult {
   error?: string;
 }
 
-export async function hasTrustline(publicKey: string, assetCode: string, assetIssuer: string): Promise<boolean> {
-  const server = getStellarServer();
-  const account = await server.loadAccount(publicKey);
-  return account.balances.some((b) => {
-    if ('asset_code' in b && 'asset_issuer' in b) {
-      return b.asset_code === assetCode && b.asset_issuer === assetIssuer;
-    }
-    return false;
+export interface TrustlineCheckResult {
+  exists: boolean;
+  authorized: boolean;
+  hasLimit: boolean;
+  availableLimit: number;
+  error?: string;
+}
+
+export async function checkTrustline(
+  publicKey: string,
+  assetCode: string,
+  assetIssuer: string,
+  amount?: string
+): Promise<TrustlineCheckResult> {
+  if (!publicKey || !assetCode || !assetIssuer) {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Invalid parameters' };
+  }
+
+  const rpc = getRpcServer();
+
+  try {
+    await rpc.getAccount(publicKey);
+  } catch {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Account does not exist' };
+  }
+
+  const asset = new Asset(assetCode, assetIssuer);
+
+  const publicKeyXdr = xdr.PublicKey.publicKeyTypeEd25519(
+    StrKey.decodeEd25519PublicKey(publicKey),
+  );
+
+  const trustlineKeyXdr = new xdr.LedgerKeyTrustLine({
+    accountId: publicKeyXdr,
+    asset: asset.toTrustLineXDRObject(),
   });
+
+  const key = xdr.LedgerKey.trustline(trustlineKeyXdr);
+
+  let entries;
+  try {
+    entries = await (rpc as any).getLedgerEntries(key);
+  } catch {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Failed to query trustline' };
+  }
+
+  if (!entries.entries || entries.entries.length === 0) {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0 };
+  }
+
+  const ledgerData = entries.entries[0];
+
+  let trustlineData;
+  try {
+    trustlineData = ledgerData.val.trustLine();
+  } catch {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Failed to parse trustline data' };
+  }
+
+  const authorized = Number(trustlineData.flags()) === 1;
+
+  const limit = Number(trustlineData.limit().toBigInt()) / 10 ** 7;
+  const balance = Number(trustlineData.balance().toBigInt()) / 10 ** 7;
+  const availableLimit = limit - balance;
+
+  if (amount) {
+    const requestedAmount = parseFloat(amount);
+    const hasEnoughLimit = availableLimit >= requestedAmount;
+    return { exists: true, authorized, hasLimit: hasEnoughLimit, availableLimit };
+  }
+
+  return { exists: true, authorized, hasLimit: true, availableLimit };
+}
+
+export async function hasTrustline(publicKey: string, assetCode: string, assetIssuer: string): Promise<boolean> {
+  const result = await checkTrustline(publicKey, assetCode, assetIssuer);
+  return result.exists && result.authorized;
 }
 
 export async function ensureTrustline(
@@ -146,12 +249,26 @@ export async function executeStellarPayment(
   const assetIssuer = asset.issuer;
 
   if (assetIssuer) {
-    const recipientHasTrustline = await hasTrustline(recipientPublicKey, assetCode, assetIssuer);
-    if (!recipientHasTrustline) {
+    const trustlineCheck = await checkTrustline(recipientPublicKey, assetCode, assetIssuer, amount);
+    if (!trustlineCheck.exists) {
       return {
         hash: '',
         success: false,
         error: `RECIPIENT_NO_TRUSTLINE:${assetCode}`,
+      };
+    }
+    if (!trustlineCheck.authorized) {
+      return {
+        hash: '',
+        success: false,
+        error: `RECIPIENT_TRUSTLINE_NOT_AUTHORIZED:${assetCode}`,
+      };
+    }
+    if (!trustlineCheck.hasLimit) {
+      return {
+        hash: '',
+        success: false,
+        error: `RECIPIENT_INSUFFICIENT_LIMIT:${assetCode}`,
       };
     }
   }

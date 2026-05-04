@@ -2,7 +2,7 @@ import db from '../db';
 import { getQuote } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER } from './stellarService';
+import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER, checkTrustline } from './stellarService';
 import { getConfigNumber } from './configService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
@@ -214,6 +214,18 @@ export async function createDeposit(
   if (!req.token_address || !isSupportedToken(req.token_address)) {
     throw new Error('UNSUPPORTED_TOKEN');
   }
+
+  const trustlineCheck = await checkTrustline(req.recipient, 'USDC', req.token_address, req.amount);
+  if (!trustlineCheck.exists) {
+    throw new Error('RECIPIENT_NO_TRUSTLINE');
+  }
+  if (!trustlineCheck.authorized) {
+    throw new Error('RECIPIENT_TRUSTLINE_NOT_AUTHORIZED');
+  }
+  if (!trustlineCheck.hasLimit) {
+    throw new Error('RECIPIENT_INSUFFICIENT_LIMIT');
+  }
+
   const usdtAmount = Number(req.amount);
   const result = await createBuyOrder(usdtAmount);
   const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
