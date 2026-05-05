@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Kafka, Consumer, logLevel } from 'kafkajs';
-import { disburseUSDC, initStellarServer } from '../services/stellarService';
+import { disburseUSDC } from '../services/stellarService';
 import { emitOrderPaid, OrderPaidEvent } from '../services/queueService';
 import { OrderState } from '../models/types';
 import db from '../db';
@@ -86,9 +86,6 @@ async function processDisburseEvent(message: DisburseMessage): Promise<void> {
 }
 
 async function startWorker(): Promise<void> {
-  const network = (process.env.STELLAR_NETWORK as 'testnet' | 'public') || 'testnet';
-  initStellarServer(network);
-
   console.log('[DisburseWorker] Starting worker, connecting to Kafka...');
 
   const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
