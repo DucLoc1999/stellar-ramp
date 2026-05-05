@@ -25,7 +25,6 @@ async function checkHotWalletTrustline() {
     initStellarServer(network);
 
     const wallet = await loadHotWallet();
-    console.log('Hot wallet:', wallet.publicKey);
     const hasTrust = await hasTrustline(wallet.publicKey, DEFAULT_ASSET_CODE, SUPPORTED_TOKEN_ISSUER);
 
     if (!hasTrust) {

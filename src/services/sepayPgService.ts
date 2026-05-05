@@ -48,7 +48,6 @@ async function getBankInfo(): Promise<SepayBankInfo> {
     bank_name: bank_name ?? process.env.SEPAY_BANK_NAME ?? '',
     bank_short_name: bank_short ?? process.env.SEPAY_BANK_SHORT ?? '',
   }
-  console.log("bank info", bankInfo);
   return bankInfo;
 }
 
