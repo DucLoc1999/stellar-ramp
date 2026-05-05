@@ -1,0 +1,4 @@
+name = "stellar-signer-worker"
+main = "src/index.ts"
+compatibility_date = "2026-05-04"
+compatibility_flags = ["nodejs_compat"]
