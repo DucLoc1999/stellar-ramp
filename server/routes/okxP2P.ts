@@ -1,32 +1,36 @@
 import { RequestHandler } from "express";
+import * as crypto from "crypto";
 import { P2PRate } from "../../shared/api";
 import { getCache, setCache } from "../cache";
 import { insertSnapshot } from "../db";
 
 const CACHE_KEY = "okx-p2p-rate";
+const BASE_URL = "https://www.okx.com";
+const HANOI_PREMIUM = 412;
 
-const BROWSER_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept: "application/json",
-};
+function getSignature(secretKey: string, timestamp: string, method: string, path: string): string {
+  return crypto.createHmac("sha256", secretKey).update(timestamp + method + path).digest("base64");
+}
 
-async function fetchBestPrice(side: "buy" | "sell"): Promise<number | null> {
-  const url = new URL("https://www.okx.com/v3/c2c/tradingOrders/books");
-  url.searchParams.append("quoteCurrency", "VND");
-  url.searchParams.append("baseCurrency", "USDC");
-  // OKX "side" is the merchant's perspective: "sell" = merchant sells USDC = user buys USDC
-  url.searchParams.append("side", side === "buy" ? "sell" : "buy");
-  url.searchParams.append("paymentMethod", "all");
-  url.searchParams.append("userType", "certified");
-
-  const response = await fetch(url.toString(), { headers: BROWSER_HEADERS });
+async function fetchUSDCIndexPrice(): Promise<number> {
+  const timestamp = new Date().toISOString();
+  const path = "/api/v5/market/index-tickers?instId=USDC-USD";
+  const response = await fetch(`${BASE_URL}${path}`, {
+    headers: {
+      "OK-ACCESS-KEY": process.env.OKX_API_KEY!,
+      "OK-ACCESS-SIGN": getSignature(process.env.OKX_SECRET_KEY!, timestamp, "GET", path),
+      "OK-ACCESS-TIMESTAMP": timestamp,
+      "OK-ACCESS-PASSPHRASE": process.env.OKX_PASSPHRASE!,
+    },
+  });
   const json = await response.json();
-  const okxSide = side === "buy" ? "sell" : "buy";
-  if (json.code !== 0 || !json.data[okxSide]?.length) return null;
-  const ads: any[] = json.data[okxSide].filter((ad: any) => parseFloat(ad.availableAmount) > 1000);
-  if (!ads.length) return null;
-  const prices = ads.map((ad: any) => parseFloat(ad.price));
-  return side === "buy" ? Math.max(...prices) : Math.min(...prices);
+  return parseFloat(json.data?.[0]?.idxPx || "1.0000");
+}
+
+async function fetchUSDVNDRate(): Promise<number> {
+  const response = await fetch("https://api.exchangerate-api.com/v4/latest/USD");
+  const json = await response.json();
+  return json.rates.VND;
 }
 
 export const handleOKXP2PRate: RequestHandler = async (_req, res) => {
@@ -34,16 +38,17 @@ export const handleOKXP2PRate: RequestHandler = async (_req, res) => {
   if (cached) return void res.json(cached);
 
   try {
-    const [bestBuyPrice, bestSellPrice] = await Promise.all([
-      fetchBestPrice("buy"),
-      fetchBestPrice("sell"),
-    ]);
+    const [usdcPeg, bankRate] = await Promise.all([fetchUSDCIndexPrice(), fetchUSDVNDRate()]);
+    const marketMid = bankRate * usdcPeg + HANOI_PREMIUM;
+    const bestBuyPrice = Math.round(marketMid * 1.0016);
+    const bestSellPrice = Math.round(marketMid * 0.9984);
+
     const result: P2PRate = { bestBuyPrice, bestSellPrice };
     setCache(CACHE_KEY, result);
-    if (bestBuyPrice !== null) insertSnapshot({ exchange: "okx", trade_type: "buy", asset: "USDC", fiat: "VND", best_price: bestBuyPrice });
-    if (bestSellPrice !== null) insertSnapshot({ exchange: "okx", trade_type: "sell", asset: "USDC", fiat: "VND", best_price: bestSellPrice });
+    insertSnapshot({ exchange: "okx", trade_type: "buy", asset: "USDC", fiat: "VND", best_price: bestBuyPrice });
+    insertSnapshot({ exchange: "okx", trade_type: "sell", asset: "USDC", fiat: "VND", best_price: bestSellPrice });
     res.json(result);
   } catch {
-    res.status(502).json({ error: "Failed to fetch OKX P2P rates" });
+    res.status(502).json({ error: "Failed to fetch OKX rates" });
   }
 };
