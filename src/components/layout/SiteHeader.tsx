@@ -31,6 +31,7 @@ export const SiteHeader = () => {
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/90">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
+          <img src="/exchanges/stellarRamp.png" alt="StellarRamp" className="h-10 w-10 rounded-lg border border-slate-200 dark:border-slate-600" />
           <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Stellar<span className="text-blue-600">Ramp</span>
           </span>
@@ -56,7 +57,7 @@ export const SiteHeader = () => {
           <button
             type="button"
             onClick={() => setIsDark((d) => !d)}
-            className="text-slate-500 transition-colors hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400"
+            className="rounded-lg border border-slate-200 p-2 text-slate-500 transition-colors hover:text-blue-600 dark:border-slate-700 dark:text-slate-400 dark:hover:text-blue-400"
             aria-label="Toggle Dark Mode"
           >
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

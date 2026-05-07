@@ -10,9 +10,12 @@ export const SiteFooter = () => {
     <footer className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 pb-8 pt-16">
       <div className="mx-auto mb-12 flex max-w-7xl flex-col gap-6 px-4 sm:px-6 lg:px-8 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col items-center md:items-start">
-          <span className="mb-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            Stellar<span className="text-blue-600">Ramp</span>
-          </span>
+          <div className="mb-2 flex items-center gap-2">
+            <img src="/exchanges/stellarRamp.png" alt="StellarRamp" className="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-600" />
+            <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Stellar<span className="text-blue-600">Ramp</span>
+            </span>
+          </div>
           <div className="flex gap-4">
             <a
               href="#"

@@ -97,7 +97,7 @@
   "rates": {
     "eyebrow": "Live Rates",
     "title": "Transparent, real-time exchange rates",
-    "description": "Rates are updated continuously. No hidden spreads — what you see is what you get.",
+    "description": "Live prices from the most popular P2P platforms in Vietnam.",
     "asset": "Asset",
     "network": "Network",
     "buyVnd": "Buy (VND)",

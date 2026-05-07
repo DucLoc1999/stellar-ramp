@@ -97,7 +97,7 @@
   "rates": {
     "eyebrow": "Tỷ giá trực tiếp",
     "title": "Tỷ giá hối đoái minh bạch, theo thời gian thực",
-    "description": "Tỷ giá được cập nhật liên tục. Không có chênh lệch ẩn — những gì bạn thấy là những gì bạn nhận được.",
+    "description": "Giá trực tiếp từ các nền tảng P2P phổ biến nhất tại Việt Nam.",
     "asset": "Tài sản",
     "network": "Mạng lưới",
     "buyVnd": "Mua (VND)",

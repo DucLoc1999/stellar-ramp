@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import {
   ChartContainer,
@@ -8,7 +8,6 @@ import {
 } from "../ui/chart";
 import { ExchangeRatesResponse, P2PRate, P2PHistoryPoint } from "@shared/api";
 import { SectionHeading } from "./SectionHeading";
-
 
 const CACHE_TTL = 60_000;
 const clientCache = new Map<string, { data: unknown; expiresAt: number }>();
@@ -30,18 +29,22 @@ async function fetchCached<T>(url: string): Promise<T | null> {
 interface RateRow {
   asset: string;
   network: string;
+  subLabel: string;
+  logo: string;
   buy: number | null;
   sell: number | null;
+  isFeatured?: boolean;
+  isCompetitor?: boolean;
 }
 
 function fmt(n: number | null) {
-  if (n === null) return "N/A";
+  if (n === null) return null;
   return n.toLocaleString("vi-VN");
 }
 
 function SkeletonCell({ right = false }: { right?: boolean }) {
   return (
-    <td className={`px-6 py-5 ${right ? "text-right" : ""}`}>
+    <td className={`px-5 py-4 ${right ? "text-right" : ""}`}>
       <div className="h-4 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700 inline-block" />
     </td>
   );
@@ -132,10 +135,14 @@ function ExchangeChart({
   const [history, setHistory] = useState<P2PHistoryPoint[]>([]);
 
   useEffect(() => {
-    fetch(`${historyEndpoint}?days=${range}`)
-      .then((r) => r.json())
-      .then(setHistory)
-      .catch(console.error);
+    const load = () =>
+      fetch(`${historyEndpoint}?days=${range}`)
+        .then((r) => r.json())
+        .then(setHistory)
+        .catch(console.error);
+    load();
+    const interval = setInterval(load, CACHE_TTL);
+    return () => clearInterval(interval);
   }, [historyEndpoint, range]);
 
   const chartData = history.map((row) => ({
@@ -219,22 +226,27 @@ function ComparisonChart({ title, side, range }: ComparisonChartProps) {
   const [bybit, setBybit] = useState<P2PHistoryPoint[]>([]);
 
   useEffect(() => {
-    fetch(`/api/our-price-history?days=${range}`)
-      .then((r) => r.json())
-      .then(setOurs)
-      .catch(console.error);
-    fetch(`/api/binance-p2p-history?days=${range}`)
-      .then((r) => r.json())
-      .then(setBinance)
-      .catch(console.error);
-    fetch(`/api/okx-p2p-history?days=${range}`)
-      .then((r) => r.json())
-      .then(setOkx)
-      .catch(console.error);
-    fetch(`/api/bybit-p2p-history?days=${range}`)
-      .then((r) => r.json())
-      .then(setBybit)
-      .catch(console.error);
+    const load = () => {
+      fetch(`/api/our-price-history?days=${range}`)
+        .then((r) => r.json())
+        .then(setOurs)
+        .catch(console.error);
+      fetch(`/api/binance-p2p-history?days=${range}`)
+        .then((r) => r.json())
+        .then(setBinance)
+        .catch(console.error);
+      fetch(`/api/okx-p2p-history?days=${range}`)
+        .then((r) => r.json())
+        .then(setOkx)
+        .catch(console.error);
+      fetch(`/api/bybit-p2p-history?days=${range}`)
+        .then((r) => r.json())
+        .then(setBybit)
+        .catch(console.error);
+    };
+    load();
+    const interval = setInterval(load, CACHE_TTL);
+    return () => clearInterval(interval);
   }, [range]);
 
   const merged = new Map<
@@ -356,6 +368,30 @@ function ComparisonChart({ title, side, range }: ComparisonChartProps) {
   );
 }
 
+function LiveCountdown() {
+  const [secondsLeft, setSecondsLeft] = useState(CACHE_TTL / 1000);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startRef.current) / 1000);
+      const remaining = CACHE_TTL / 1000 - (elapsed % (CACHE_TTL / 1000));
+      setSecondsLeft(remaining);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+      </span>
+      <span>Refreshing in {secondsLeft}s</span>
+    </span>
+  );
+}
+
 export const RatesSection = () => {
   const [rows, setRows] = useState<RateRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -372,27 +408,39 @@ export const RatesSection = () => {
     setRows([
       {
         asset: "USDC",
-        network: "Stellar",
+        network: "Stellar Ramp",
+        subLabel: "Stellar",
+        logo: "/exchanges/stellarRamp.png",
         buy: usdc?.buy ?? null,
         sell: usdc?.sell ?? null,
+        isFeatured: true,
       },
       {
         asset: "USDC",
-        network: "BSC (BEP20)",
+        network: "Binance P2P",
+        subLabel: "BSC (BEP20)",
+        logo: "/exchanges/binance.png",
         buy: binance?.bestBuyPrice ?? null,
         sell: binance?.bestSellPrice ?? null,
+        isCompetitor: true,
       },
       {
         asset: "USDC",
         network: "OKX P2P",
+        subLabel: "OKX",
+        logo: "/exchanges/okx.png",
         buy: okx?.bestBuyPrice ?? null,
         sell: okx?.bestSellPrice ?? null,
+        isCompetitor: true,
       },
       {
         asset: "USDC",
         network: "Bybit P2P",
+        subLabel: "Bybit",
+        logo: "/exchanges/bybit.png",
         buy: bybit?.bestBuyPrice ?? null,
         sell: bybit?.bestSellPrice ?? null,
+        isCompetitor: true,
       },
     ]);
     setLoading(false);
@@ -406,6 +454,14 @@ export const RatesSection = () => {
 
   const ROWS_COUNT = 4;
 
+  const bestBuy =
+    rows.length > 0 ? Math.max(...rows.map((r) => r.buy ?? -Infinity)) : null;
+  const bestSell =
+    rows.length > 0 ? Math.min(...rows.map((r) => r.sell ?? Infinity)) : null;
+
+  const competitorRows = rows.filter((r) => r.isCompetitor);
+  const ourRow = rows.find((r) => r.isFeatured);
+
   return (
     <section className="relative bg-slate-50 dark:bg-slate-900 py-24">
       <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-slate-200 to-transparent" />
@@ -414,76 +470,288 @@ export const RatesSection = () => {
           id="rates"
           eyebrow="Live Rates"
           title="Transparent, real-time exchange rates"
-          description="Rates are updated continuously. No hidden spreads — what you see is what you get."
+          description={
+            <>Live prices from the most popular P2P platforms in Vietnam.</>
+          }
         />
 
-        {/* Rate table */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
-                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Asset
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Network
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Buy (VND)
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Sell (VND)
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading
-                  ? Array.from({ length: ROWS_COUNT }).map((_, i) => (
-                      <tr
-                        key={i}
-                        className={`border-b border-slate-100 ${i === ROWS_COUNT - 1 ? "border-b-0" : ""}`}
-                      >
-                        <SkeletonCell />
-                        <SkeletonCell />
-                        <SkeletonCell right />
-                        <SkeletonCell right />
-                      </tr>
-                    ))
-                  : rows.map((row, i) => (
-                      <tr
-                        key={`${row.asset}-${row.network}`}
-                        className={`border-b border-slate-100 dark:border-slate-700 transition hover:bg-slate-50 dark:hover:bg-slate-700/50 ${i === rows.length - 1 ? "border-b-0" : ""}`}
-                      >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-                              {row.asset.slice(0, 2)}
+        {/* Rate table — desktop */}
+        <div className="hidden sm:block">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-slate-700">
+                <th className="pb-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 pl-2">
+                  Asset
+                </th>
+                <th className="pb-3 text-right text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Buy (VND)
+                </th>
+                <th className="pb-3 text-right text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Sell (VND)
+                </th>
+                <th className="pb-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: ROWS_COUNT }).map((_, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-slate-100 dark:border-slate-800"
+                  >
+                    <SkeletonCell />
+                    <SkeletonCell right />
+                    <SkeletonCell right />
+                    <td className="px-5 py-4 w-36" />
+                  </tr>
+                ))
+              ) : (
+                <>
+                  {/* Our featured row */}
+                  {ourRow && (
+                    <tr className="border-b border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20">
+                      <td className="pl-2 pr-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-slate-800 overflow-hidden shrink-0 ring-2 ring-slate-200 dark:ring-slate-600">
+                              <img src={ourRow.logo} alt={ourRow.network} className="h-full w-full object-contain" />
                             </div>
-                            <span className="font-bold text-slate-900 dark:text-slate-100">
-                              {row.asset}
-                            </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 dark:text-slate-100">
+                                {ourRow.asset}
+                              </span>
+                              <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white leading-none">
+                                Stellar Ramp
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              {ourRow.subLabel}
+                            </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-5 text-slate-500 dark:text-slate-400">
-                          {row.network}
-                        </td>
-                        <td className="px-6 py-5 text-right font-bold text-emerald-600">
-                          {row.buy !== null ? `${fmt(row.buy)} ₫` : "—"}
-                        </td>
-                        <td className="px-6 py-5 text-right font-bold text-red-500">
-                          {row.sell !== null ? `${fmt(row.sell)} ₫` : "—"}
-                        </td>
-                      </tr>
-                    ))}
-              </tbody>
-            </table>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="inline-flex flex-col items-end">
+                          <span className="font-bold text-emerald-600 text-base tabular-nums">
+                            {ourRow.buy !== null ? (
+                              `${fmt(ourRow.buy)} ₫`
+                            ) : (
+                              <span className="text-slate-400 text-sm font-medium">
+                                N/A
+                              </span>
+                            )}
+                          </span>
+                          {ourRow.buy !== null &&
+                            bestBuy !== null &&
+                            ourRow.buy === bestBuy && (
+                              <span className="mt-0.5 text-[10px] font-bold text-emerald-500 uppercase tracking-wide">
+                                Best Rate
+                              </span>
+                            )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="inline-flex flex-col items-end">
+                          <span className="font-bold text-red-500 text-base tabular-nums">
+                            {ourRow.sell !== null ? (
+                              `${fmt(ourRow.sell)} ₫`
+                            ) : (
+                              <span className="text-slate-400 text-sm font-medium">
+                                N/A
+                              </span>
+                            )}
+                          </span>
+                          {ourRow.sell !== null &&
+                            bestSell !== null &&
+                            ourRow.sell === bestSell && (
+                              <span className="mt-0.5 text-[10px] font-bold text-emerald-500 uppercase tracking-wide">
+                                Lowest Fee
+                              </span>
+                            )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 w-36 text-right">
+                        <a
+                          href={import.meta.env.VITE_TELEGRAM_LINK}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-lg bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 px-4 py-2 text-xs font-bold text-white transition-colors shadow-sm shadow-emerald-200 dark:shadow-emerald-900/40"
+                        >
+                          Buy Now
+                        </a>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Competitor group header */}
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-2 pt-5 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500"
+                    >
+                      Market Comparison
+                    </td>
+                  </tr>
+
+                  {competitorRows.map((row, i) => (
+                    <tr
+                      key={`${row.asset}-${row.network}`}
+                      className={`border-b border-slate-100 dark:border-slate-800 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${i === competitorRows.length - 1 ? "border-b-0" : ""}`}
+                    >
+                      <td className="pl-2 pr-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-slate-800 overflow-hidden shrink-0 ring-2 ring-slate-200 dark:ring-slate-600">
+                              <img src={row.logo} alt={row.network} className="h-full w-full object-contain" />
+                            </div>
+                          <div>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">
+                              {row.network}
+                            </span>
+                            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                              {row.subLabel}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums">
+                        {row.buy !== null ? (
+                          `${fmt(row.buy)} ₫`
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-600 text-xs font-medium">
+                            N/A
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums">
+                        {row.sell !== null ? (
+                          `${fmt(row.sell)} ₫`
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-600 text-xs font-medium">
+                            N/A
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 w-36" />
+                    </tr>
+                  ))}
+                </>
+              )}
+            </tbody>
+          </table>
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+            <LiveCountdown />
+            <span className="mx-1">·</span>
+            <span>Final rate confirmed at trade execution.</span>
           </div>
-          <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-6 py-3">
-            <p className="text-xs text-slate-400 dark:text-slate-500">
-              Rates refresh every 60 seconds. Final rate confirmed at trade
-              execution.
-            </p>
+        </div>
+
+        {/* Rate cards — mobile */}
+        <div className="flex flex-col gap-3 sm:hidden">
+          {loading
+            ? Array.from({ length: ROWS_COUNT }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-3"
+                >
+                  <div className="h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  <div className="h-4 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                </div>
+              ))
+            : rows.map((row) => (
+                <div
+                  key={`${row.asset}-${row.network}`}
+                  className={`rounded-2xl border p-5 ${
+                    row.isFeatured
+                      ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20"
+                      : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`flex h-9 w-9 items-center justify-center rounded-full overflow-hidden ring-2 ring-slate-200 dark:ring-slate-600 bg-white dark:bg-slate-800`}
+                      >
+                        <img src={row.logo} alt={row.network} className="h-full w-full object-contain" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`font-bold ${row.isFeatured ? "text-slate-900 dark:text-slate-100" : "text-slate-700 dark:text-slate-300"}`}
+                          >
+                            {row.isFeatured ? "Stellar Ramp" : row.network}
+                          </span>
+                          {row.isFeatured && (
+                            <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white leading-none">
+                              Our Rate
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          {row.subLabel}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600/70 mb-1">
+                        Buy
+                      </p>
+                      <p className="font-bold text-emerald-600 tabular-nums text-sm">
+                        {row.buy !== null ? (
+                          `${fmt(row.buy)} ₫`
+                        ) : (
+                          <span className="text-slate-400 font-medium">
+                            N/A
+                          </span>
+                        )}
+                      </p>
+                      {row.buy !== null &&
+                        bestBuy !== null &&
+                        row.buy === bestBuy && (
+                          <p className="text-[10px] font-bold text-emerald-500 mt-0.5 uppercase">
+                            Best Rate
+                          </p>
+                        )}
+                    </div>
+                    <div className="rounded-xl bg-red-50 dark:bg-red-950/20 px-3 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-red-500/70 mb-1">
+                        Sell
+                      </p>
+                      <p className="font-bold text-red-500 tabular-nums text-sm">
+                        {row.sell !== null ? (
+                          `${fmt(row.sell)} ₫`
+                        ) : (
+                          <span className="text-slate-400 font-medium">
+                            N/A
+                          </span>
+                        )}
+                      </p>
+                      {row.sell !== null &&
+                        bestSell !== null &&
+                        row.sell === bestSell && (
+                          <p className="text-[10px] font-bold text-emerald-500 mt-0.5 uppercase">
+                            Lowest Fee
+                          </p>
+                        )}
+                    </div>
+                  </div>
+                  {row.isFeatured && (
+                    <a
+                      href={import.meta.env.VITE_TELEGRAM_LINK}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center w-full rounded-xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition-colors"
+                    >
+                      Buy Now
+                    </a>
+                  )}
+                </div>
+              ))}
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 px-1">
+            <LiveCountdown />
+            <span className="mx-1">·</span>
+            <span>Final rate confirmed at trade execution.</span>
           </div>
         </div>
 
