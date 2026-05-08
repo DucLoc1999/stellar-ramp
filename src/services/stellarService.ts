@@ -4,6 +4,16 @@ import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
 export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
 
+const HORIZON_URLS: Record<string, string> = {
+  testnet: 'https://horizon-testnet.stellar.org',
+  public: 'https://horizon.stellar.org',
+};
+
+function getHorizonUrl(network?: string): string {
+  const net = network?.toLowerCase() || process.env.STELLAR_NETWORK || 'testnet';
+  return HORIZON_URLS[net] || HORIZON_URLS.testnet;
+}
+
 export interface TrustlineCheckResult {
   exists: boolean;
   authorized: boolean;
@@ -12,17 +22,84 @@ export interface TrustlineCheckResult {
   error?: string;
 }
 
+interface HorizonBalance {
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+  balance: string;
+  limit?: string;
+}
+
+interface HorizonAccount {
+  balances: HorizonBalance[];
+}
+
+export async function getHorizonAccount(publicKey: string, network?: string): Promise<HorizonAccount | null> {
+  const horizonUrl = getHorizonUrl(network);
+  try {
+    const res = await fetch(`${horizonUrl}/accounts/${publicKey}`);
+    if (!res.ok) return null;
+    return await res.json() as HorizonAccount;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkTrustline(
   publicKey: string,
   assetCode: string,
   assetIssuer: string,
   amount?: string
 ): Promise<TrustlineCheckResult> {
-  return { exists: true, authorized: true, hasLimit: true, availableLimit: 999999 };
+  const account = await getHorizonAccount(publicKey);
+  if (!account) {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Account not found' };
+  }
+
+  const balance = account.balances.find(
+    (b) => b.asset_code === assetCode && b.asset_issuer === assetIssuer
+  );
+
+  if (!balance) {
+    return { exists: false, authorized: false, hasLimit: false, availableLimit: 0 };
+  }
+
+  const balanceNum = parseFloat(balance.balance);
+  const authorized = balanceNum > 0;
+  const limit = balance.limit ? parseFloat(balance.limit) : Infinity;
+  const availableLimit = limit === Infinity ? Infinity : limit - balanceNum;
+
+  if (amount) {
+    const requestedAmount = parseFloat(amount);
+    const hasEnoughLimit = availableLimit >= requestedAmount;
+    return { exists: true, authorized, hasLimit: hasEnoughLimit, availableLimit };
+  }
+
+  return { exists: true, authorized, hasLimit: true, availableLimit };
 }
 
 export async function hasTrustline(publicKey: string, assetCode: string, assetIssuer: string): Promise<boolean> {
-  return true;
+  const result = await checkTrustline(publicKey, assetCode, assetIssuer);
+  return result.exists && result.authorized;
+}
+
+export async function getUsdcBalance(publicKey: string, network?: string): Promise<string> {
+  const account = await getHorizonAccount(publicKey, network);
+  if (!account) return '0';
+
+  const usdcBalance = account.balances.find(
+    (b) => b.asset_code === DEFAULT_ASSET_CODE && b.asset_issuer === SUPPORTED_TOKEN_ISSUER
+  );
+
+  return usdcBalance ? usdcBalance.balance : '0';
+}
+
+export async function getXlmBalance(publicKey: string, network?: string): Promise<string> {
+  const account = await getHorizonAccount(publicKey, network);
+  if (!account) return '0';
+
+  const nativeBalance = account.balances.find((b) => b.asset_type === 'native');
+  return nativeBalance ? nativeBalance.balance : '0';
 }
 
 export async function loadHotWallet() {

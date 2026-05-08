@@ -81,5 +81,17 @@ Client → POST /api/orders/withdrawal
 | 15 | USDC_FAILED |
 | 16 | WAITING_ADMIN_APPROVAL |
 
+## Validation (Trustline Checks)
+
+**Payment service handles recipient/client wallet validation:**
+- `checkTrustline()` → validates recipient trustline via Horizon REST
+- Checks: exists, authorized, available limit
+- Returns granular errors: NO_TRUSTLINE, NOT_AUTHORIZED, INSUFFICIENT_LIMIT
+
+**Worker handles source wallet validation:**
+- Checks XLM balance ≥ 0.00001 (gas fees)
+- For tokens: checks source trustline + sufficient balance
+- Errors: INSUFFICIENT_GAS, WALLET_NO_TRUSTLINE, INSUFFICIENT_TOKEN_BALANCE
+
 ## Env Variables
 See `.env.example` for required configuration.

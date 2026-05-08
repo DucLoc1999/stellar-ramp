@@ -1,13 +1,17 @@
 # Stellar Signer Worker
 
-Cloudflare Worker for securely signing and submitting Stellar XLM payments.
+Cloudflare Worker for securely signing and submitting Stellar XLM/USDC payments.
+
+## Responsibilities
+
+**This worker only handles source wallet validation:**
+- Checks XLM balance ≥ 0.00001 (gas for fees)
+- For token transfers: checks source has trustline + sufficient balance
+- Signs and submits Stellar transaction
+
+**Client/recipient validation is done by payment_svc before calling this worker.**
 
 ## Environment
-
-- `STELLAR_PRIVATE_KEY`: Cloudflare Secret containing the source account secret key starting with `S`
-- `INTERNAL_AUTH_TOKEN`: Cloudflare Secret used as the bearer token
-
-## Setup
 
 ```bash
 npm install
@@ -40,7 +44,8 @@ Body:
 }
 ```
 
-Use `token_address` and `token_code` for token transfers. Omit them for native XLM payments.
+- Omit `token_code` + `token_address` for native XLM payments
+- Include both for token transfers (USDC, etc.)
 
 ## Response
 
@@ -51,3 +56,12 @@ Use `token_address` and `token_code` for token transfers. Omit them for native X
   "ledger": 123456
 }
 ```
+
+## Error Codes
+
+| Error | Cause |
+|-------|-------|
+| `INSUFFICIENT_GAS` | XLM balance < 0.00001 |
+| `WALLET_NO_TRUSTLINE` | Source missing trustline |
+| `WALLET_NOT_AUTHORIZED` | Source trustline frozen |
+| `INSUFFICIENT_TOKEN_BALANCE` | Source has less tokens than payment amount |

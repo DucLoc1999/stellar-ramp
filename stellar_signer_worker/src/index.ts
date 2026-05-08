@@ -36,18 +36,11 @@ type ParsedRequest = {
   asset: AssetSpec;
 };
 
-type TrustlineStatus = {
-  exists: boolean;
-  authorized: boolean;
-  limitStroops: bigint;
-  balanceStroops: bigint;
-  availableLimitStroops: bigint;
-};
-
 type HorizonServer = InstanceType<typeof StellarSdk.Horizon.Server>;
 type HorizonAccount = Awaited<ReturnType<HorizonServer['loadAccount']>>;
 
 const STROOP_SCALE = 10n ** 7n;
+const MIN_XLM_BALANCE = '0.00001';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -186,69 +179,68 @@ function parsePaymentRequest(body: PaymentRequestBody): ParsedRequest {
   };
 }
 
-function findTrustline(account: HorizonAccount, assetCode: string, assetIssuer: string) {
-  return account.balances.find((balance) => {
-    return (
-      typeof balance !== 'string' &&
-      'asset_code' in balance &&
-      'asset_issuer' in balance &&
-      balance.asset_code === assetCode &&
-      balance.asset_issuer === assetIssuer
-    );
-  });
+function findNativeBalance(account: HorizonAccount): string {
+  const nativeBalance = account.balances.find((b) => b.asset_type === 'native');
+  return nativeBalance ? nativeBalance.balance : '0';
 }
 
-function getTrustlineStatus(account: HorizonAccount, assetCode: string, assetIssuer: string): TrustlineStatus | null {
-  const trustline = findTrustline(account, assetCode, assetIssuer);
+function findTokenBalance(account: HorizonAccount, assetCode: string, assetIssuer: string): { balance: string; isAuthorized: boolean } | null {
+  const trustline = account.balances.find((b) => {
+    return (
+      typeof b !== 'string' &&
+      'asset_code' in b &&
+      'asset_issuer' in b &&
+      b.asset_code === assetCode &&
+      b.asset_issuer === assetIssuer
+    );
+  });
 
-  if (!trustline || !('limit' in trustline)) {
-    return null;
-  }
-
-  const limitStroops = toStroops(trustline.limit);
-  const balanceStroops = toStroops(trustline.balance);
-
+  if (!trustline) return null;
   return {
-    exists: true,
-    authorized: Boolean(trustline.is_authorized),
-    limitStroops,
-    balanceStroops,
-    availableLimitStroops: limitStroops - balanceStroops,
+    balance: trustline.balance,
+    isAuthorized: Boolean(trustline.is_authorized ?? true),
   };
 }
 
-function trustlineError(message: string) {
-  return jsonResponse({ success: false, error: message }, { status: 400 });
-}
-
-async function checkTokenTrustlines(server: HorizonServer, sourceAccount: HorizonAccount, destination: string, asset: AssetSpec, amount: string) {
-  if (asset.isNative) {
-    return null;
+async function checkSourceWallet(
+  server: HorizonServer,
+  sourceAccount: HorizonAccount,
+  asset: AssetSpec,
+  paymentAmount: string
+): Promise<Response | null> {
+  const xlmBalance = parseFloat(findNativeBalance(sourceAccount));
+  if (xlmBalance < parseFloat(MIN_XLM_BALANCE)) {
+    return jsonResponse(
+      { success: false, error: `INSUFFICIENT_GAS: XLM balance ${xlmBalance} below minimum ${MIN_XLM_BALANCE}` },
+      { status: 400 }
+    );
   }
 
-  const sourceStatus = getTrustlineStatus(sourceAccount, asset.assetCode, asset.assetIssuer);
-  if (!sourceStatus) {
-    return trustlineError('WALLET_NO_TRUSTLINE');
-  }
+  if (!asset.isNative) {
+    const sourceBalance = findTokenBalance(sourceAccount, asset.assetCode, asset.assetIssuer);
 
-  if (!sourceStatus.authorized) {
-    return trustlineError('WALLET_NOT_AUTHORIZED');
-  }
+    if (!sourceBalance) {
+      return jsonResponse(
+        { success: false, error: 'WALLET_NO_TRUSTLINE: Source wallet missing trustline for token' },
+        { status: 400 }
+      );
+    }
 
-  const destinationAccount = await server.loadAccount(destination);
-  const destinationStatus = getTrustlineStatus(destinationAccount, asset.assetCode, asset.assetIssuer);
+    if (!sourceBalance.isAuthorized) {
+      return jsonResponse(
+        { success: false, error: 'WALLET_NOT_AUTHORIZED: Source trustline is frozen' },
+        { status: 400 }
+      );
+    }
 
-  if (!destinationStatus) {
-    return trustlineError('RECIPIENT_NO_TRUSTLINE');
-  }
-
-  if (!destinationStatus.authorized) {
-    return trustlineError('RECIPIENT_NOT_AUTHORIZED');
-  }
-
-  const paymentStroops = toStroops(amount);
-  if (destinationStatus.availableLimitStroops < paymentStroops) {
-    return trustlineError('RECIPIENT_INSUFFICIENT_LIMIT');
+    const tokenBalanceNum = parseFloat(sourceBalance.balance);
+    const paymentAmountNum = parseFloat(paymentAmount);
+    if (tokenBalanceNum < paymentAmountNum) {
+      return jsonResponse(
+        { success: false, error: `INSUFFICIENT_TOKEN_BALANCE: Available ${tokenBalanceNum}, required ${paymentAmountNum}` },
+        { status: 400 }
+      );
+    }
   }
 
   return null;
@@ -293,9 +285,9 @@ export default {
       const sourcePublicKey = sourceKeypair.publicKey();
       const sourceAccount = await server.loadAccount(sourcePublicKey);
 
-      const trustlineCheck = await checkTokenTrustlines(server, sourceAccount, parsed.destination, parsed.asset, parsed.amount);
-      if (trustlineCheck) {
-        return trustlineCheck;
+      const sourceCheck = await checkSourceWallet(server, sourceAccount, parsed.asset, parsed.amount);
+      if (sourceCheck) {
+        return sourceCheck;
       }
 
       let builder = new StellarSdk.TransactionBuilder(sourceAccount, {
