@@ -2,7 +2,7 @@ import db from '../db';
 import { getQuote } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER, checkTrustline } from './stellarService';
+import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
 import { getConfigNumber } from './configService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
@@ -10,8 +10,8 @@ import { OrderState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
-function isSupportedToken(tokenAddress: string): boolean {
-  return tokenAddress === SUPPORTED_TOKEN_ISSUER;
+function isSupportedToken(tokenAddress: string, assetCode: string): boolean {
+  return tokenAddress === SUPPORTED_TOKEN_ISSUER && (assetCode === DEFAULT_ASSET_CODE || assetCode === 'USDC');
 }
 
 interface OrderRow {
@@ -30,6 +30,7 @@ interface OrderRow {
   error_message: string | null;
   chain_id: number;
   token_address: string;
+  asset_code: string;
   recipient: string | null;
   callback: string;
   payment_info: Usdt247PaymentInfo | Record<string, unknown> | string | null;
@@ -92,6 +93,7 @@ async function toApiOrder(
     currency: 'USDC',
     rate,
     token_address: order.token_address,
+    asset_code: order.asset_code || '',
     recipient: order.recipient ?? '',
     chain_id: order.chain_id,
     partner_id: "1",  // update when have partner assign system
@@ -192,7 +194,8 @@ export async function confirmPayment(params: {
 
   if (order.direction === 'buy' && order.recipient) {
     const usdtAmount = order.usdt_amount.toString();
-    const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address);
+    const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
+    const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
     if (result.success && order.callback) {
       fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, 10, 14, result.hash).catch(() => { });
     }
@@ -211,19 +214,13 @@ export async function createDeposit(
   req: DepositRequest,
   options?: CreateOptions
 ): Promise<Usdt247Order> {
-  if (!req.token_address || !isSupportedToken(req.token_address)) {
+  if (!req.token_address || !req.asset_code || !isSupportedToken(req.token_address, req.asset_code)) {
     throw new Error('UNSUPPORTED_TOKEN');
   }
 
-  const trustlineCheck = await checkTrustline(req.recipient, 'USDC', req.token_address, req.amount);
-  if (!trustlineCheck.exists) {
-    throw new Error('RECIPIENT_NO_TRUSTLINE');
-  }
-  if (!trustlineCheck.authorized) {
-    throw new Error('RECIPIENT_TRUSTLINE_NOT_AUTHORIZED');
-  }
-  if (!trustlineCheck.hasLimit) {
-    throw new Error('RECIPIENT_INSUFFICIENT_LIMIT');
+  const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, req.token_address, req.amount);
+  if (!trustlineCheck.exists || !trustlineCheck.authorized || !trustlineCheck.hasLimit) {
+    throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
   }
 
   const usdtAmount = Number(req.amount);
@@ -234,6 +231,7 @@ export async function createDeposit(
     .update({
       chain_id: req.chain_id,
       token_address: req.token_address,
+      asset_code: req.asset_code,
       recipient: req.recipient,
       callback: req.callback,
       order_state: OrderState.PROCESSING,
@@ -266,7 +264,7 @@ export async function createWithdrawal(
   req: WithdrawalRequest,
   options?: CreateOptions
 ): Promise<Usdt247Order> {
-  if (!req.token_address || !isSupportedToken(req.token_address)) {
+  if (!req.token_address || !req.asset_code || !isSupportedToken(req.token_address, req.asset_code)) {
     throw new Error('UNSUPPORTED_TOKEN');
   }
   const usdtAmount = Number(req.amount);
@@ -287,6 +285,7 @@ export async function createWithdrawal(
       processing_state: 10,
       chain_id: req.chain_id,
       token_address: req.token_address,
+      asset_code: req.asset_code,
       callback: req.callback,
       bank_id: req.payment_info.bank_id,
       bank_account_name: req.payment_info.full_name,
@@ -378,6 +377,8 @@ interface ChainEventParams {
   amount: string;
   address: string;
   chainId: number;
+  tokenAddress?: string;
+  assetCode?: string;
 }
 
 interface ChainEventResult {
@@ -386,7 +387,7 @@ interface ChainEventResult {
 }
 
 export async function handleChainEvent(params: ChainEventParams): Promise<ChainEventResult> {
-  const { paymentCode, txHash, amount, address, chainId } = params;
+  const { paymentCode, txHash, amount, address, chainId, tokenAddress, assetCode } = params;
 
   const order = await db('orders').where({ payment_code: paymentCode }).first();
 
@@ -400,6 +401,14 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
 
   if (order.recipient && order.recipient !== address) {
     return { success: false, error: 'Address mismatch' };
+  }
+
+  if (tokenAddress && order.token_address && order.token_address !== tokenAddress) {
+    return { success: false, error: 'Token issuer mismatch' };
+  }
+
+  if (assetCode && order.asset_code && order.asset_code !== assetCode) {
+    return { success: false, error: 'Asset code mismatch' };
   }
 
   const orderUsdtAmount = typeof order.usdt_amount === 'string'

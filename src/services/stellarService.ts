@@ -197,10 +197,11 @@ export async function disburseUSDC(
   recipientPublicKey: string,
   amount: string,
   paymentCode: string,
-  tokenAddress: string
+  tokenAddress: string,
+  assetCode: string
 ): Promise<DisburseResult> {
   const network = (process.env.STELLAR_NETWORK || 'testnet').toUpperCase();
-  const tokenCode = process.env.ASSET_CODE || DEFAULT_ASSET_CODE;
+  const tokenCode = assetCode || DEFAULT_ASSET_CODE;
 
   const result = await callWorker(
     recipientPublicKey,
@@ -221,24 +222,13 @@ export async function disburseUSDC(
       });
   } else {
     const errorMsg = result.error || '';
-    let mappedError = errorMsg;
-
-    if (errorMsg.includes('RECIPIENT_NO_TRUSTLINE')) {
-      mappedError = 'RECIPIENT_NO_TRUSTLINE';
-    } else if (errorMsg.includes('RECIPIENT_NOT_AUTHORIZED')) {
-      mappedError = 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED';
-    } else if (errorMsg.includes('RECIPIENT_INSUFFICIENT_LIMIT')) {
-      mappedError = 'RECIPIENT_INSUFFICIENT_LIMIT';
-    } else if (errorMsg.includes('WALLET_NO_TRUSTLINE')) {
-      console.error(`[StellarService] Wallet missing trustline for ${tokenCode}`);
-    }
 
     await db('orders')
       .where({ id: orderId })
       .update({
         order_state: 4,
         processing_state: 15,
-        error_message: mappedError,
+        error_message: errorMsg,
       });
   }
 
@@ -250,7 +240,8 @@ export async function triggerDisburse(
   recipientPublicKey: string,
   amount: string,
   paymentCode: string,
-  tokenAddress: string
+  tokenAddress: string,
+  assetCode: string
 ): Promise<DisburseResult> {
   await db('orders')
     .where({ id: orderId })
@@ -263,10 +254,11 @@ export async function triggerDisburse(
       amount,
       paymentCode,
       tokenAddress,
+      assetCode,
     });
     return { hash: '', success: true };
   } else {
     console.log(`[StellarService] Direct disburse for order ${orderId}`);
-    return await disburseUSDC(orderId, recipientPublicKey, amount, paymentCode, tokenAddress);
+    return await disburseUSDC(orderId, recipientPublicKey, amount, paymentCode, tokenAddress, assetCode);
   }
 }
