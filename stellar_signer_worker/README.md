@@ -13,6 +13,20 @@ Cloudflare Worker for securely signing and submitting Stellar XLM/USDC payments.
 
 ## Environment
 
+### Development (Local)
+
+```bash
+cd stellar_signer_worker
+npm install
+npm run dev          # starts at http://localhost:8787
+```
+
+Then POST to `http://localhost:8787/` with:
+- `Authorization: Bearer <INTERNAL_AUTH_TOKEN>` (from `.env`)
+- JSON body per the Request section below
+
+### Production
+
 ```bash
 npm install
 npx wrangler secret put STELLAR_PRIVATE_KEY

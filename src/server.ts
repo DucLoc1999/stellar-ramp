@@ -40,7 +40,7 @@ async function checkHotWalletTrustline() {
 async function start() {
   await healthCheck();
   await checkKafkaConnection();
-  await checkHotWalletTrustline();
+  // await checkHotWalletTrustline();
 
   const app = await buildApp();
 
