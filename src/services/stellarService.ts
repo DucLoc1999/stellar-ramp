@@ -68,6 +68,19 @@ async function callWorker(
     requestBody.token_address = tokenAddress;
   }
 
+  const amountFormatted = parseFloat(amount).toFixed(7).replace(/\.?0+$/, '');
+  requestBody.amount = amountFormatted;
+
+  console.log('[StellarService] Calling worker:', {
+    url: workerUrl,
+    destination,
+    amount: amountFormatted,
+    memo,
+    network,
+    token_code: tokenCode || 'XLM (native)',
+    token_address: tokenAddress || 'N/A',
+  });
+
   const response = await fetch(workerUrl, {
     method: 'POST',
     headers: {
