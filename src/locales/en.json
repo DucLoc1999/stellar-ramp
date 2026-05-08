@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "whyStellarRamp": "Why Stellar Ramp?",
+    "process": "Process",
+    "liveRates": "Live Rates",
+    "faq": "FAQ",
+    "contactSupport": "Contact Support",
+    "buySell": "Buy/Sell"
+  },
+  "hero": {
+    "badge": "24/7 TELEGRAM BOT",
+    "title1": "The fastest way to",
+    "title2": "Buy & Sell",
+    "title3": "with VND",
+    "description": "Instantly on-ramp and off-ramp via our non-custodial Telegram Bot. Receive VND directly to your local bank account in minutes.",
+    "zeroFees": "Zero hidden fees.",
+    "cta": "Buy/Sell on Telegram",
+    "feature1": "24/7 Bank Transfers",
+    "feature2": "3-30s Processing",
+    "feature3": "Secure & Transparent",
+    "systemOverview": "System Overview",
+    "botStatus": "Bot Status: Active 24/7",
+    "supportedBanks": "Supported VN Banks",
+    "supportedAssets": "Supported Assets",
+    "avgProcessing": "Avg Processing",
+    "liveRates": "Live VND Rates",
+    "buy": "Buy",
+    "sell": "Sell",
+    "youPay": "You pay",
+    "youReceive": "You receive",
+    "fee": "Fee",
+    "nextRefresh": "Next refresh",
+    "zeroKnowledge": "Zero-Knowledge Security. End-to-end encrypted."
+  },
+  "features": {
+    "eyebrow": "WHY CHOOSE STELLAR RAMP?",
+    "title": "Built for Vietnamese Traders",
+    "items": [
+      {
+        "title": "Lightning Fast Execution",
+        "description": "Automated matching engine settles VND directly to your bank in seconds."
+      },
+      {
+        "title": "Best VND Exchange Rates",
+        "description": "We aggregate liquidity to guarantee the tightest spreads for USDC."
+      },
+      {
+        "title": "Absolute Security",
+        "description": "Non-custodial design. You hold your keys, we handle the fiat routing."
+      },
+      {
+        "title": "24/7 Local Support",
+        "description": "Dedicated Vietnamese support team available directly within Telegram."
+      }
+    ]
+  },
+  "howItWorks": {
+    "eyebrow": "HOW IT WORKS",
+    "title": "From Crypto to VND in 3 Steps",
+    "cta": "📊 Buy/Sell Now",
+    "steps": [
+      {
+        "title": "📱 Open Telegram and find @StellarRampBot",
+        "description": "👉 Press \"Start\" to activate the bot and complete a quick KYC verification."
+      },
+      {
+        "title": "💱 Choose Buy or Sell — confirm & receive",
+        "description": "Select USDC, enter the amount, confirm the rate, and funds settle in seconds."
+      }
+    ],
+    "mockup": {
+      "step1": "Step 1 — Start the Bot",
+      "step2": "Step 2 — Verify Identity",
+      "step3": "Step 3 — Buy or Sell",
+      "botName": "Stellar Ramp Bot",
+      "botLabel": "bot",
+      "start": "/start",
+      "welcome": "👋 Welcome to <b>Stellar Ramp</b>!",
+      "welcomeTagline": "The fastest way to trade Crypto with VND.",
+      "liveRates": "📊 <b>Live Rates:</b>",
+      "liveRatesValue": "USDC: 25,450 VND",
+      "kycTitle": "🪪 <b>Identity Verification</b>",
+      "kycBody": "To comply with regulations, please complete a quick KYC check.",
+      "kycNeeds": "You'll need:",
+      "kycItem1": "Full name & date of birth",
+      "kycItem2": "Phone number",
+      "kycItem3": "Government-issued ID photo",
+      "kycButton": "✅ Start KYC Verification",
+      "kycSubtitle": "One-time setup · Takes ~2 minutes",
+      "menuPrompt": "What would you like to do today? 👇",
+      "buyButton": "🟢 Buy USDC with VND",
+      "sellButton": "🔴 Sell USDC to VND",
+      "bankButton": "🔗 Check Bank Links"
+    },
+    "illustrativeNote": "Images are for illustrative purposes only"
+  },
+  "rates": {
+    "eyebrow": "Live Rates",
+    "title": "Transparent, real-time exchange rates",
+    "description": "Live prices from the most popular P2P platforms in Vietnam.",
+    "asset": "Asset",
+    "network": "Network",
+    "buyVnd": "Buy (VND)",
+    "sellVnd": "Sell (VND)",
+    "refreshNote": "Rates refresh every 60 seconds. Final rate confirmed at trade execution.",
+    "linkedWith": "Linked with over",
+    "banks": "50+ banks,",
+    "ewallets": "7+ e-wallets",
+    "noHistory": "No historical data yet"
+  },
+  "feedback": {
+    "eyebrow": "USER FEEDBACK",
+    "title": "Trusted by the OTC community",
+    "description": "Users love our speed, transparent rates, and support team that's always ready to help.",
+    "items": [
+      {
+        "quote": "Super fast USDC purchase here, got the money in under 5 minutes.",
+        "name": "Thai Anh",
+        "role": "OTC Trader"
+      },
+      {
+        "quote": "The Telegram bot is easy to use and the exchange rate is transparent.",
+        "name": "Minh Anh",
+        "role": "Investor"
+      },
+      {
+        "quote": "Genuine 24/7 support, sent to the wrong network and got help immediately.",
+        "name": "Do Hung",
+        "role": "POD Seller"
+      },
+      {
+        "quote": "Best rates on the market with fully transparent transactions.",
+        "name": "Lan Anh",
+        "role": "Content Creator"
+      },
+      {
+        "quote": "Fast withdrawals, no stuck orders like other platforms.",
+        "name": "Duc Hieu",
+        "role": "Dropshipper"
+      },
+      {
+        "quote": "Rock-solid system — never encountered a single technical issue.",
+        "name": "Nguyen Nam",
+        "role": "Freelancer"
+      }
+    ]
+  },
+  "faq": {
+    "eyebrow": "FAQ",
+    "title": "Frequently Asked Questions",
+    "aboutUs": "ABOUT US",
+    "aboutTitle": "Stellar Ramp – The bridge to Web3",
+    "aboutDescription": "We connect Web3 to Vietnam's finance with secure, non-custodial gateways that move fiat fast at rates.",
+    "items": [
+      {
+        "question": "Is Stellar Ramp safe for non-custodial crypto trading and secure fiat routing for your bank account?",
+        "answer": "Absolutely. Stellar Ramp operates on a non-custodial model. We never hold your crypto assets. Smart contracts and automated matching engines ensure that fiat is routed securely and directly to your provided bank account."
+      },
+      {
+        "question": "How long does a VND withdrawal take from Stellar Ramp, once your transaction is confirmed on-chain?",
+        "answer": "Thanks to our direct NAPAS integration, 99% of VND withdrawals are processed and settled to your domestic Vietnam bank account within 3 to 30 seconds after the blockchain transaction is confirmed."
+      },
+      {
+        "question": "Are there trading limits for USDC, and how do verified accounts increase per-transaction caps quickly today?",
+        "answer": "Unverified accounts can trade up to $500 per day. By completing a quick basic verification within the bot, you can increase your limits up to $100,000 per transaction for institutional scale needs."
+      },
+      {
+        "question": "Is the Telegram bot active during Vietnamese holidays, so you can on-ramp and off-ramp without delays?",
+        "answer": "Yes! Our system is fully automated and runs 24/7/365. You can on-ramp and off-ramp during Tet holidays, weekends, and in the middle of the night without any delays."
+      }
+    ]
+  },
+  "finalCta": {
+    "title": "Ready to trade USDC safely and instantly?",
+    "description": "Join StellarRamp and experience automated crypto-to-VND trading in seconds. No app download. No hidden fees.",
+    "openBot": "Open bot on Telegram",
+    "contactSupport": "Contact Support"
+  },
+  "footer": {
+    "termsOfService": "Terms of Service",
+    "privacyPolicy": "Privacy Policy",
+    "apiPartners": "API Partners",
+    "joinCommunity": "📱 Join Community",
+    "copyright": "© 2026 Orbit Labs. All rights reserved."
+  }
+}
