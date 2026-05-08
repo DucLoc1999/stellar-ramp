@@ -395,9 +395,18 @@ function LiveCountdown() {
 export const RatesSection = () => {
   const [rows, setRows] = useState<RateRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<7 | 30>(7);
+  const isFirstLoad = useRef(true);
 
   async function load() {
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false;
+    } else {
+      setRefreshing(true);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
     const [usdc, binance, okx, bybit] = await Promise.all([
       fetchCached<ExchangeRatesResponse>("/api/exchange-rate"),
       fetchCached<P2PRate>("/api/binance-p2p-rate"),
@@ -444,6 +453,7 @@ export const RatesSection = () => {
       },
     ]);
     setLoading(false);
+    setRefreshing(false);
   }
 
   useEffect(() => {
@@ -531,7 +541,7 @@ export const RatesSection = () => {
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <div className="inline-flex flex-col items-end">
+                        <div className={`inline-flex flex-col items-end transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
                           <span className="font-bold text-emerald-600 text-base tabular-nums">
                             {ourRow.buy !== null ? (
                               `${fmt(ourRow.buy)} ₫`
@@ -551,7 +561,7 @@ export const RatesSection = () => {
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <div className="inline-flex flex-col items-end">
+                        <div className={`inline-flex flex-col items-end transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
                           <span className="font-bold text-red-500 text-base tabular-nums">
                             {ourRow.sell !== null ? (
                               `${fmt(ourRow.sell)} ₫`
@@ -613,7 +623,7 @@ export const RatesSection = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums">
+                      <td className={`px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
                         {row.buy !== null ? (
                           `${fmt(row.buy)} ₫`
                         ) : (
@@ -622,7 +632,7 @@ export const RatesSection = () => {
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums">
+                      <td className={`px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
                         {row.sell !== null ? (
                           `${fmt(row.sell)} ₫`
                         ) : (
@@ -697,7 +707,7 @@ export const RatesSection = () => {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600/70 mb-1">
                         Buy
                       </p>
-                      <p className="font-bold text-emerald-600 tabular-nums text-sm">
+                      <p className={`font-bold text-emerald-600 tabular-nums text-sm transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
                         {row.buy !== null ? (
                           `${fmt(row.buy)} ₫`
                         ) : (
@@ -718,7 +728,7 @@ export const RatesSection = () => {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-red-500/70 mb-1">
                         Sell
                       </p>
-                      <p className="font-bold text-red-500 tabular-nums text-sm">
+                      <p className={`font-bold text-red-500 tabular-nums text-sm transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
                         {row.sell !== null ? (
                           `${fmt(row.sell)} ₫`
                         ) : (

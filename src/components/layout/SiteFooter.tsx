@@ -11,7 +11,11 @@ export const SiteFooter = () => {
       <div className="mx-auto mb-12 flex max-w-7xl flex-col gap-6 px-4 sm:px-6 lg:px-8 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col items-center md:items-start">
           <div className="mb-2 flex items-center gap-2">
-            <img src="/exchanges/stellarRamp.png" alt="StellarRamp" className="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-600" />
+            <img
+              src="/exchanges/stellarRamp.png"
+              alt="StellarRamp"
+              className="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-600"
+            />
             <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
               Stellar<span className="text-blue-600">Ramp</span>
             </span>
@@ -39,7 +43,7 @@ export const SiteFooter = () => {
             </a>
           </div>
         </div>
-        <div>
+        <div className="flex justify-center">
           <a
             href={BOT_URL}
             target="_blank"
