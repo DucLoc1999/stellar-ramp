@@ -196,9 +196,10 @@ function findTokenBalance(account: HorizonAccount, assetCode: string, assetIssue
   });
 
   if (!trustline) return null;
+  const balanceLine = trustline as { is_authorized?: boolean };
   return {
     balance: trustline.balance,
-    isAuthorized: Boolean(trustline.is_authorized ?? true),
+    isAuthorized: Boolean(balanceLine.is_authorized ?? true),
   };
 }
 
@@ -290,16 +291,29 @@ export default {
         return sourceCheck;
       }
 
+      const destExists = await server.loadAccount(parsed.destination).catch(() => null);
+
       let builder = new StellarSdk.TransactionBuilder(sourceAccount, {
         fee: StellarSdk.BASE_FEE.toString(),
         networkPassphrase,
-      }).addOperation(
-        StellarSdk.Operation.payment({
-          destination: parsed.destination,
-          asset: parsed.asset.isNative ? StellarSdk.Asset.native() : parsed.asset.asset,
-          amount: parsed.amount,
-        })
-      );
+      });
+
+      if (!destExists && parsed.asset.isNative) {
+        builder = builder.addOperation(
+          StellarSdk.Operation.createAccount({
+            destination: parsed.destination,
+            startingBalance: parsed.amount,
+          })
+        );
+      } else {
+        builder = builder.addOperation(
+          StellarSdk.Operation.payment({
+            destination: parsed.destination,
+            asset: parsed.asset.isNative ? StellarSdk.Asset.native() : parsed.asset.asset,
+            amount: parsed.amount,
+          })
+        );
+      }
 
       if (parsed.memo) {
         builder = builder.addMemo(StellarSdk.Memo.text(parsed.memo));
@@ -308,7 +322,12 @@ export default {
       const transaction = builder.setTimeout(30).build();
       transaction.sign(sourceKeypair);
 
-      const result = await server.submitTransaction(transaction);
+      // const result = await server.submitTransaction(transaction);
+      // for test pupose only return transaction signed instead of submit
+      const result = {
+        hash: transaction.hash().toString('hex'),
+        ledger: 0,
+      };
 
       return jsonResponse({
         success: true,

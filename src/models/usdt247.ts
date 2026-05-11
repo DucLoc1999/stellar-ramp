@@ -31,6 +31,7 @@ export interface Usdt247PayData {
   amount?: string;
   chain_id?: string;
   token_address?: string;
+  asset_code?: string;
   qr_code?: string;
   qr_link?: string;
 }
@@ -54,6 +55,7 @@ export interface Usdt247Order {
   currency: string;
   rate: number;
   token_address: string;
+  asset_code: string;
   recipient: string;
   chain_id: number;
   partner_id: string | null;

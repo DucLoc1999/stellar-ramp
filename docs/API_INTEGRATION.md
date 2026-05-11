@@ -19,6 +19,638 @@ Partner-App-Key: <your-partner-key>
 Endpoints requiring auth:
 - `POST /api/orders/deposit`
 - `POST /api/orders/withdrawal`
+- `GET /api/orders/:id`
+- `POST /api/orders/:id/cancel`
+
+### Provider → Service Webhooks
+
+**SePay** uses API key auth:
+```
+Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
+```
+
+**Chain** uses HMAC signature auth:
+```
+X-Webhook-Timestamp: <unix-ms>
+X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)
+X-Webhook-Id: <optional-idempotency-key>
+```
+
+Replay protection: requests older than 5 minutes are rejected.
+
+---
+
+## Supported Assets
+
+| Asset Code | Type | Token Address | Description |
+|------------|------|---------------|-------------|
+| `USDC` | Token | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` | USDC on Stellar |
+| `XLM` | Native | Empty string (`""`) | Stellar Lumens (no token address needed) |
+
+---
+
+## Rate Endpoints
+
+### Get USDC/VND Rate
+
+```
+GET /api/rate/usdt_vnd
+```
+
+**Response (200):**
+```json
+{
+  "created_at": "2026-05-11T02:30:00.000Z",
+  "buy": 26504,
+  "sell": 26358,
+  "fee_rate_buy": 0.008,
+  "fee_rate_sell": 0.008,
+  "min_fee_vnd": 5000
+}
+```
+
+### Get XLM/VND Rate
+
+```
+GET /api/rate/xlm_vnd
+```
+
+**Response (200):**
+```json
+{
+  "created_at": "2026-05-11T02:30:00.000Z",
+  "buy": 4538,
+  "sell": 4238,
+  "fee_rate_buy": 0.008,
+  "fee_rate_sell": 0.008,
+  "min_fee_vnd": 5000
+}
+```
+
+---
+
+## Endpoints
+
+### 1. Create Deposit Order (Buy Crypto)
+
+```
+POST /api/orders/deposit
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Buy USDC:**
+```json
+{
+  "amount": "100",
+  "chain_id": 1,
+  "asset_code": "USDC",
+  "token_address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "recipient": "GABC123...YZ",
+  "callback": "https://your-server.com/webhook"
+}
+```
+
+**Buy XLM (native):**
+```json
+{
+  "amount": "10",
+  "chain_id": 1,
+  "asset_code": "XLM",
+  "token_address": "",
+  "recipient": "GABC123...YZ",
+  "callback": "https://your-server.com/webhook"
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| amount | string | Yes | Amount (e.g. "100") |
+| chain_id | integer | Yes | Network: 1=Stellar testnet, 0=Stellar mainnet |
+| asset_code | string | Yes | Token code: `USDC` or `XLM` |
+| token_address | string | No* | Token issuer. Required for USDC, empty for XLM |
+| recipient | string | Yes | User's Stellar wallet address |
+| callback | string | Yes | Webhook URL for state changes |
+
+*For XLM native, `token_address` can be empty string `""` or omitted.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "199",
+    "order_type": "buy",
+    "code": "DH123456",
+    "provider": "sepay",
+    "amount": 10,
+    "currency": "XLM",
+    "rate": 4490,
+    "asset_code": "XLM",
+    "token_address": "",
+    "recipient": "GABC123...YZ",
+    "chain_id": 1,
+    "state": 1,
+    "processing_state": 10,
+    "body": {
+      "qr_link": "https://qr.sepay.vn/img?...",
+      "bankInfo": {
+        "bankName": "Ngân hàng TMCP Quân đội",
+        "bankAccountName": "PHUNG VAN THIEN",
+        "bankAccountNumber": "VQRQAITNX0144",
+        "transferContent": "DH123456",
+        "vaAmount": 49900
+      }
+    },
+    "expired_at": { "seconds": 1778467977, "nanos": 875000000 },
+    "created_at": { "seconds": 1778466177, "nanos": 861000000 },
+    "original_rate": 4440,
+    "total_fee_vnd": 5000
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid partner key",
+    "retriable": false,
+    "trace_id": "req-123"
+  }
+}
+```
+
+---
+
+### 2. Create Withdrawal Order (Sell Crypto)
+
+```
+POST /api/orders/withdrawal
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Sell USDC:**
+```json
+{
+  "amount": "100",
+  "chain_id": 1,
+  "asset_code": "USDC",
+  "token_address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "callback": "https://your-server.com/webhook",
+  "payment_info": {
+    "bank_id": "MBBank",
+    "full_name": "NGUYEN VAN A",
+    "account_type": 1,
+    "account_number": "0123456789"
+  }
+}
+```
+
+**Sell XLM:**
+```json
+{
+  "amount": "10",
+  "chain_id": 1,
+  "asset_code": "XLM",
+  "token_address": "",
+  "callback": "https://your-server.com/webhook",
+  "payment_info": {
+    "bank_id": "MBBank",
+    "full_name": "NGUYEN VAN A",
+    "account_type": 1,
+    "account_number": "0123456789"
+  }
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| amount | string | Yes | Amount to sell |
+| chain_id | integer | Yes | Network: 1=Stellar testnet, 0=Stellar mainnet |
+| asset_code | string | Yes | Token code: `USDC` or `XLM` |
+| token_address | string | No* | Token issuer. Required for USDC, empty for XLM |
+| callback | string | Yes | Webhook URL for state changes |
+| payment_info | object | Yes | Bank payout info |
+| payment_info.bank_id | string | Yes | Bank name (MBBank, Techcombank, etc.) |
+| payment_info.full_name | string | Yes | Account holder name (no accents) |
+| payment_info.account_type | integer | Yes | Account type |
+| payment_info.account_number | string | Yes | Account number |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "200",
+    "order_type": "sell",
+    "code": "DH789012",
+    "provider": "chain",
+    "amount": 10,
+    "currency": "XLM",
+    "rate": 4238,
+    "asset_code": "XLM",
+    "chain_id": 1,
+    "state": 1,
+    "processing_state": 10,
+    "pay_data": {
+      "address": "G_hot_wallet_address..."
+    },
+    "payment_info": { ... }
+  }
+}
+```
+
+---
+
+### 3. Get Order Status
+
+```
+GET /api/orders/:id
+```
+
+**Headers:**
+```
+Partner-App-Key: <your-partner-key>
+```
+
+**Example:**
+```
+GET /api/orders/199
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "199",
+    "order_type": "buy",
+    "code": "DH123456",
+    "amount": 10,
+    "currency": "XLM",
+    "state": 1,
+    "processing_state": 10,
+    "transaction_hash": "abc123...",
+    "created_at": { "seconds": 1778466177, "nanos": 861000000 },
+    "updated_at": { "seconds": 1778466177, "nanos": 861000000 }
+  }
+}
+```
+
+---
+
+### 4. Cancel Order
+
+```
+POST /api/orders/:id/cancel
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Body (optional):**
+```json
+{
+  "reason": "User requested cancellation"
+}
+```
+
+**Logic:**
+- Only orders in `CREATED(1)` or `PROCESSING(2)` (without irreversible steps) can be cancelled
+- If `PROCESSING` and payment already received, cancellation is rejected
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "payment_code": "DH123456",
+    "order_state": 5,
+    "cancelled_at": "2026-05-11T02:30:00.000Z"
+  }
+}
+```
+
+**Error Response (409):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CANCEL_NOT_ALLOWED",
+    "message": "Order cannot be cancelled",
+    "retriable": false,
+    "trace_id": "req-123"
+  }
+}
+```
+
+---
+
+### 5. SePay Webhook (Deposit Confirmation)
+
+```
+POST /api/webhooks/sepay
+```
+
+**Headers:**
+```
+Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "id": 123456789,
+  "gateway": "MBBank",
+  "transactionDate": "2026-05-11T02:30:00",
+  "accountNumber": "VQRQAITNX0144",
+  "code": "DH123456",
+  "content": "DH123456",
+  "transferType": "in",
+  "transferAmount": 49900,
+  "accumulated": 49900,
+  "subAccount": null,
+  "referenceCode": "REF123456",
+  "description": "Chuyen tien"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+---
+
+### 6. Chain Webhook (Withdrawal Completion)
+
+```
+POST /api/webhooks/chain
+```
+
+**Headers:**
+```
+X-Webhook-Timestamp: <unix-ms>
+X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "order_key": "DH789012",
+  "tx_hash": "abc123...",
+  "amount": "10.00",
+  "address": "GABC123...YZ",
+  "chain_id": 1,
+  "token_address": "",
+  "asset_code": "XLM"
+}
+```
+
+**Validation:**
+1. Timestamp replay check (5-minute window)
+2. Signature verification against `CHAIN_WEBHOOK_SECRET`
+3. Order lookup by `order_key`
+4. Address must match `orders.recipient`
+5. Amount must match within 1% tolerance
+
+**Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+---
+
+## Webhook Callback
+
+When order state changes, backend POSTs to client's `callback` URL:
+
+**Headers:**
+```
+Content-Type: application/json
+X-Timestamp: <unix-ms>
+X-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)
+```
+
+**Body:**
+```json
+{
+  "id": "199",
+  "topic": "order.state.change",
+  "ts": "2026-05-11T02:30:00.000Z",
+  "payload": {
+    "order_id": "199",
+    "old_order_state": 1,
+    "new_order_state": 2
+  }
+}
+```
+
+### Callback Signature Verification (Node.js)
+
+```javascript
+const crypto = require('crypto');
+
+function verifyCallback(secret, timestamp, body, signature) {
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(`${timestamp}.${body}`)
+    .digest('hex');
+  
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  );
+  
+  const now = Date.now();
+  const timestampNum = parseInt(timestamp, 10);
+  const isFresh = Math.abs(now - timestampNum) <= 300000; // 5 min;
+  
+  return isValid && isFresh;
+}
+```
+
+---
+
+## Order States
+
+| State | Name | Description |
+|-------|------|-------------|
+| 1 | CREATED | Order created, waiting for payment |
+| 2 | PROCESSING | Payment confirmed, processing (disbursing/paying out) |
+| 3 | COMPLETED | Order finished successfully |
+| 4 | FAILED | Order failed |
+| 5 | CANCELLED | Order cancelled |
+
+**State Transitions:**
+```
+CREATED(1) → PROCESSING(2) → COMPLETED(3)
+           ↘ FAILED(4)
+CREATED(1) → CANCELLED(5)
+PROCESSING(2) → CANCELLED(5) [only if no irreversible step]
+```
+
+---
+
+## Error Response Schema
+
+All errors follow this format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "MACHINE_CODE",
+    "message": "Human-readable message",
+    "retriable": true,
+    "trace_id": "req-123"
+  }
+}
+```
+
+### Error Codes
+
+| Code | HTTP Status | Retriable | Description |
+|------|-------------|-----------|-------------|
+| `ORDER_NOT_FOUND` | 404 | false | Order not found |
+| `INVALID_AMOUNT` | 400 | false | Invalid amount format |
+| `CANCEL_NOT_ALLOWED` | 409 | false | Order cannot be cancelled |
+| `VALIDATION_ERROR` | 400 | false | Request validation failed |
+| `UNAUTHORIZED` | 401 | false | Authentication failed |
+| `AUTH_NOT_CONFIGURED` | 503 | true | Auth not configured |
+| `INTERNAL_ERROR` | 500 | true | Internal server error |
+| `CHAIN_EVENT_MISMATCH` | 400 | false | Chain event validation failed |
+| `UNSUPPORTED_TOKEN` | 400 | false | Token not supported |
+| `RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT` | 400 | false | Recipient trustline issue |
+
+Every response includes `X-Trace-ID` header for debugging.
+
+---
+
+## Amount Calculation
+
+**Buy (Deposit):**
+```
+net_vnd = amount × rate + fee_vnd
+fee_vnd = max(amount × rate × fee_rate, 5000)
+```
+
+**Sell (Withdrawal):**
+```
+net_vnd = amount × rate - fee_vnd
+fee_vnd = max(amount × rate × fee_rate, 5000)
+```
+
+Example for buying 10 XLM at rate 4490 VND:
+- gross_vnd = 10 × 4490 = 44,900 VND
+- fee_vnd = max(44,900 × 0.008, 5000) = 5000 VND (min fee)
+- net_vnd = 44,900 + 5000 = 49,900 VND
+
+---
+
+## Environment Variables
+
+Add to `.env`:
+
+```env
+# Partner API key (client → service auth)
+PARTNER_APP_KEY=your-partner-key
+
+# Callback webhook settings
+CALLBACK_TIMEOUT_MS=8000
+CALLBACK_RETRY_COUNT=3
+CALLBACK_RETRY_DELAY_MS=5000
+
+# Callback signature secret (shared with client)
+CALLBACK_SIGNATURE_SECRET=min-32-char-secret
+
+# Chain webhook secret (provider → service auth)
+CHAIN_WEBHOOK_SECRET=your-webhook-secret
+
+# CoinGecko API key (for XLM price, optional)
+COINGECKO_API_KEY=
+```
+
+---
+
+## Swagger UI
+
+Full API docs at: `http://<server-ip>:3000/docs`
+
+---
+
+## Complete Flow
+
+### Buy Crypto (Deposit)
+
+1. **Client** → `POST /api/orders/deposit` with amount + asset + recipient + callback
+2. **Server** → Returns `payment_code`, bank info, QR code
+3. **Client** → Shows QR code / bank transfer instructions
+4. **User** → Transfers VND to SePay with content = `payment_code`
+5. **SePay** → `POST /api/webhooks/sepay`
+6. **Server** → Updates order to PROCESSING, triggers disbursement
+7. **Worker** → Sends crypto via Stellar to recipient wallet
+8. **Server** → Updates to COMPLETED, POSTs callback with new state
+
+### Sell Crypto (Withdrawal)
+
+1. **Client** → `POST /api/orders/withdrawal` with amount + asset + bank info + callback
+2. **Server** → Returns `payment_code`, hot wallet address in `pay_data`
+3. **User** → Sends crypto to our hot wallet
+4. **External system** → Detects payment → `POST /api/webhooks/chain`
+5. **Server** → Validates, updates to PROCESSING
+6. **Server** → Executes VND payout to bank
+7. **Server** → Updates to COMPLETED, POSTs callback with new state
+
+---
+
+## Callback Retry
+
+Callbacks are retried up to 3 times with 5-second delays between attempts. All attempts are logged to `callback_logs` table for visibility.
+
+Failed callbacks can be queried:
+```sql
+SELECT * FROM callback_logs WHERE status = 'failed' ORDER BY created_at DESC;
+```
+http://localhost:3000
+```
+
+## Authentication
+
+### Client → Service (Partner-App-Key)
+
+All order API endpoints require the `Partner-App-Key` header:
+
+```
+Partner-App-Key: <your-partner-key>
+```
+
+Endpoints requiring auth:
+- `POST /api/orders/deposit`
+- `POST /api/orders/withdrawal`
 - `GET /api/orders/:payment_code`
 - `POST /api/orders/:payment_code/cancel`
 

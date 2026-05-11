@@ -6,6 +6,7 @@ export interface DisburseCryptoEvent {
   amount: string;
   paymentCode: string;
   tokenAddress: string;
+  assetCode: string;
 }
 
 export interface OrderPaidEvent {

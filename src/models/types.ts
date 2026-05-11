@@ -23,7 +23,8 @@ export const OrderState = {
 export interface DepositRequest {
   amount: string;
   chain_id: number;
-  token_address: string;
+  token_address?: string | null;
+  asset_code: string;
   recipient: string;
   callback: string;
   user_id?: string;
@@ -32,7 +33,8 @@ export interface DepositRequest {
 export interface WithdrawalRequest {
   amount: string;
   chain_id: number;
-  token_address: string;
+  token_address?: string | null;
+  asset_code: string;
   callback: string;
   payment_info: {
     bank_id: string;

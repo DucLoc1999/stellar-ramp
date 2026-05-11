@@ -14,6 +14,7 @@ interface DisburseMessage {
   amount: string;
   paymentCode: string;
   tokenAddress: string;
+  assetCode: string;
 }
 
 const retries = new Map<number, number>();
@@ -23,13 +24,13 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function processDisburseEvent(message: DisburseMessage): Promise<void> {
-  const { orderId, recipientPublicKey, amount, paymentCode, tokenAddress } = message;
+  const { orderId, recipientPublicKey, amount, paymentCode, tokenAddress, assetCode } = message;
   const attempt = retries.get(orderId) || 0;
 
   console.log(`[DisburseWorker] Processing order ${orderId}, attempt ${attempt + 1}/${MAX_RETRIES}`);
 
   try {
-    const result = await disburseUSDC(orderId, recipientPublicKey, amount, paymentCode, tokenAddress);
+    const result = await disburseUSDC(orderId, recipientPublicKey, amount, paymentCode, tokenAddress, assetCode);
 
     if (result.success) {
       console.log(`[DisburseWorker] Success for order ${orderId}, hash: ${result.hash}`);

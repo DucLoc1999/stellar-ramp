@@ -51,9 +51,29 @@ export async function checkTrustline(
   assetIssuer: string,
   amount?: string
 ): Promise<TrustlineCheckResult> {
+  const isXlmNative = !assetIssuer || assetCode.toUpperCase() === 'XLM';
+  
   const account = await getHorizonAccount(publicKey);
+  
   if (!account) {
+    if (isXlmNative) {
+      return { exists: true, authorized: true, hasLimit: true, availableLimit: Infinity };
+    }
     return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Account not found' };
+  }
+
+  if (isXlmNative) {
+    const nativeBal = account.balances.find((b) => b.asset_type === 'native');
+    if (!nativeBal) {
+      return { exists: false, authorized: false, hasLimit: false, availableLimit: 0 };
+    }
+    const balanceNum = parseFloat(nativeBal.balance);
+    if (amount) {
+      const requestedAmount = parseFloat(amount);
+      const hasEnough = balanceNum >= requestedAmount;
+      return { exists: true, authorized: true, hasLimit: hasEnough, availableLimit: balanceNum };
+    }
+    return { exists: true, authorized: true, hasLimit: true, availableLimit: balanceNum };
   }
 
   const balance = account.balances.find(
@@ -221,15 +241,19 @@ export async function disburseUSDC(
         processing_state: 14,
       });
   } else {
-    const errorMsg = result.error || '';
+    const errorMsg = (result.error || '').slice(0, 500);
 
-    await db('orders')
-      .where({ id: orderId })
-      .update({
-        order_state: 4,
-        processing_state: 15,
-        error_message: errorMsg,
-      });
+    try {
+      await db('orders')
+        .where({ id: orderId })
+        .update({
+          order_state: 4,
+          processing_state: 15,
+          error_message: errorMsg,
+        });
+    } catch (dbErr) {
+      console.error(`[StellarService] Failed to mark order ${orderId} as FAILED:`, dbErr);
+    }
   }
 
   return result;

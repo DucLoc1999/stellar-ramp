@@ -12,15 +12,16 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
-      summary: 'Create a deposit order (buy USDC) — returns SePay checkout session',
+      summary: 'Create a deposit order (buy USDC/XLM) — returns SePay checkout session',
       body: {
         type: 'object',
-        required: ['amount', 'chain_id', 'token_address', 'recipient', 'callback'],
+        required: ['amount', 'chain_id', 'asset_code', 'recipient', 'callback'],
         properties: {
-          amount: { type: 'string', description: 'USDC amount as string' },
-          chain_id: { type: 'integer', description: 'Chain ID (56=BSC, 20=TRC20, 1=ERC20)' },
-          token_address: { type: 'string', description: 'USDC contract address' },
-          recipient: { type: 'string', description: "User's wallet to receive USDC" },
+          amount: { type: 'string', description: 'Amount as string' },
+          chain_id: { type: 'integer', description: 'Chain ID (1=Stellar testnet, 0=Stellar mainnet)' },
+          token_address: { type: 'string', description: 'Token issuer (required for USDC, empty for XLM native)' },
+          asset_code: { type: 'string', description: 'Token code (e.g. USDC, XLM)' },
+          recipient: { type: 'string', description: "User's wallet to receive tokens" },
           callback: { type: 'string', description: 'Webhook URL for order state changes' },
           user_id: { type: 'string', description: 'Optional client user ID' },
         },
@@ -42,14 +43,15 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
-      summary: 'Create a withdrawal order (sell USDC) — stub, logic incomplete',
+      summary: 'Create a withdrawal order (sell USDC/XLM) — stub, logic incomplete',
       body: {
         type: 'object',
-        required: ['amount', 'chain_id', 'token_address', 'callback', 'payment_info'],
+        required: ['amount', 'chain_id', 'asset_code', 'callback', 'payment_info'],
         properties: {
           amount: { type: 'string' },
           chain_id: { type: 'integer' },
-          token_address: { type: 'string' },
+          token_address: { type: 'string', description: 'Token issuer (required for USDC, empty for XLM native)' },
+          asset_code: { type: 'string', description: 'Token code (e.g. USDC, XLM)' },
           callback: { type: 'string' },
           user_id: { type: 'string' },
           payment_info: {
@@ -76,16 +78,16 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     },
   }, handleWithdrawal);
 
-  app.get<{ Params: { payment_code: string } }>('/:payment_code', {
+  app.get<{ Params: { id: string } }>('/:id', {
     preHandler: partnerAuth,
     schema: {
       security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
-      summary: 'Get order status by payment code',
+      summary: 'Get order status by ID',
       params: {
         type: 'object',
         properties: {
-          payment_code: { type: 'string', description: 'e.g. USDC247-A3F8B2C1' },
+          id: { type: 'string', description: 'Order ID (numeric)' },
         },
       },
       response: {
@@ -115,16 +117,16 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     },
   }, handleGetOrder);
 
-  app.post<{ Params: { payment_code: string }; Body: { reason?: string } }>('/:payment_code/cancel', {
+  app.post<{ Params: { id: string }; Body: { reason?: string } }>('/:id/cancel', {
     preHandler: partnerAuth,
     schema: {
       security: [{ PartnerAppKey: [] }],
       tags: ['Orders'],
-      summary: 'Cancel an order by payment code',
+      summary: 'Cancel an order by ID',
       params: {
         type: 'object',
         properties: {
-          payment_code: { type: 'string', description: 'e.g. USDC247-A3F8B2C1' },
+          id: { type: 'string', description: 'Order ID (numeric)' },
         },
       },
       body: {
@@ -175,7 +177,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     },
   }, handleCancel);
 
-  app.get<{ Params: { payment_code: string } }>('/:payment_code/success', handleOrderSuccess);
-  app.get<{ Params: { payment_code: string } }>('/:payment_code/error', handleOrderError);
-  app.get<{ Params: { payment_code: string } }>('/:payment_code/cancel', handleOrderCancel);
+  app.get<{ Params: { id: string } }>('/:id/success', handleOrderSuccess);
+  app.get<{ Params: { id: string } }>('/:id/error', handleOrderError);
+  app.get<{ Params: { id: string } }>('/:id/cancel', handleOrderCancel);
 }

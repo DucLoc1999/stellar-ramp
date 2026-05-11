@@ -23,13 +23,15 @@ interface ChainWebhookBody {
   amount: string;
   address: string;
   chain_id: number;
+  token_address?: string;
+  asset_code?: string;
 }
 
 export async function handleChainWebhook(
   req: FastifyRequest<{ Body: ChainWebhookBody }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const { order_key, tx_hash, amount, address, chain_id } = req.body;
+  const { order_key, tx_hash, amount, address, chain_id, token_address, asset_code } = req.body;
 
   const result = await handleChainEvent({
     paymentCode: order_key,
@@ -37,6 +39,8 @@ export async function handleChainWebhook(
     amount,
     address,
     chainId: chain_id,
+    tokenAddress: token_address,
+    assetCode: asset_code,
   });
 
   if (!result.success) {

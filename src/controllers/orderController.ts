@@ -2,8 +2,8 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
   createDeposit,
   createWithdrawal,
-  getOrderByCode,
-  cancelOrder,
+  getOrderById,
+  cancelOrderById,
   formatOrderResponse,
 } from '../services/orderService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
@@ -34,6 +34,9 @@ export async function handleDeposit(
     if (errMsg === 'UNSUPPORTED_TOKEN') {
       return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
     }
+    if (errMsg === 'XLM_MIN_AMOUNT_1') {
+      return createErrorReply(reply, 'INVALID_AMOUNT', 'Minimum XLM amount is 1 (required to activate new Stellar accounts)', req.id);
+    }
     throw error;
   }
 }
@@ -51,10 +54,14 @@ export async function handleWithdrawal(
 }
 
 export async function handleGetOrder(
-  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const order = await getOrderByCode(req.params.payment_code);
+  const orderId = parseInt(req.params.id, 10);
+  if (isNaN(orderId)) {
+    return createErrorReply(reply, 'VALIDATION_ERROR', 'Invalid order ID', req.id);
+  }
+  const order = await getOrderById(orderId);
   if (!order) {
     return createErrorReply(reply, 'ORDER_NOT_FOUND', 'Order not found', req.id);
   }
@@ -62,10 +69,14 @@ export async function handleGetOrder(
 }
 
 export async function handleCancel(
-  req: FastifyRequest<{ Params: { payment_code: string }; Body: { reason?: string } }>,
+  req: FastifyRequest<{ Params: { id: string }; Body: { reason?: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const result = await cancelOrder(req.params.payment_code, req.body?.reason);
+  const orderId = parseInt(req.params.id, 10);
+  if (isNaN(orderId)) {
+    return createErrorReply(reply, 'VALIDATION_ERROR', 'Invalid order ID', req.id);
+  }
+  const result = await cancelOrderById(orderId, req.body?.reason);
   
   if (result.error) {
     const errorCode = result.error === 'ORDER_NOT_FOUND' ? 'ORDER_NOT_FOUND' : 
@@ -78,25 +89,34 @@ export async function handleCancel(
 }
 
 export async function handleOrderSuccess(
-  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const url = `${process.env.DOMAIN || ''}/order/${req.params.payment_code}?payment=success`;
+  const orderId = parseInt(req.params.id, 10);
+  const order = await getOrderById(orderId);
+  const paymentCode = order?.payment_code || req.params.id;
+  const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=success`;
   return reply.redirect(url, 302);
 }
 
 export async function handleOrderError(
-  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const url = `${process.env.DOMAIN || ''}/order/${req.params.payment_code}?payment=error`;
+  const orderId = parseInt(req.params.id, 10);
+  const order = await getOrderById(orderId);
+  const paymentCode = order?.payment_code || req.params.id;
+  const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=error`;
   return reply.redirect(url, 302);
 }
 
 export async function handleOrderCancel(
-  req: FastifyRequest<{ Params: { payment_code: string } }>,
+  req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const url = `${process.env.DOMAIN || ''}/order/${req.params.payment_code}?payment=cancel`;
+  const orderId = parseInt(req.params.id, 10);
+  const order = await getOrderById(orderId);
+  const paymentCode = order?.payment_code || req.params.id;
+  const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=cancel`;
   return reply.redirect(url, 302);
 }

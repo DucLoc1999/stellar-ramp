@@ -10,8 +10,12 @@ import { OrderState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
-function isSupportedToken(tokenAddress: string, assetCode: string): boolean {
-  return tokenAddress === SUPPORTED_TOKEN_ISSUER && (assetCode === DEFAULT_ASSET_CODE || assetCode === 'USDC');
+function isSupportedToken(tokenAddress: string | null | undefined, assetCode: string): boolean {
+  const addr = tokenAddress || '';
+  if (assetCode.toUpperCase() === 'XLM' && !addr) {
+    return true;
+  }
+  return addr === SUPPORTED_TOKEN_ISSUER && (assetCode === DEFAULT_ASSET_CODE || assetCode === 'USDC');
 }
 
 interface OrderRow {
@@ -81,6 +85,8 @@ async function toApiOrder(
   const spreadSell = await getConfigNumber('spread_sell', 50);
   const originalRate = order.direction === 'buy' ? rate - spreadBuy : rate + spreadSell;
 
+  const assetCode = (order.asset_code || 'USDC').toUpperCase();
+
   return {
     id: String(order.id),
     user_id: overrides?.user_id ?? '',
@@ -90,7 +96,7 @@ async function toApiOrder(
     provider: order.direction === 'buy' ? 'sepay' : 'chain',
     callback: order.callback,
     amount: typeof order.usdt_amount === 'string' ? parseFloat(order.usdt_amount) : order.usdt_amount,
-    currency: 'USDC',
+    currency: assetCode === 'XLM' ? 'XLM' : 'USDC',
     rate,
     token_address: order.token_address,
     asset_code: order.asset_code || '',
@@ -144,8 +150,8 @@ function firstInsertedId(result: unknown): number {
   return Number(result);
 }
 
-export async function createBuyOrder(usdt_amount: number) {
-  const quote = await getQuote('buy', usdt_amount);
+export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC') {
+  const quote = await getQuote('buy', usdt_amount, asset);
   const payment_code = generatePaymentCode();
   const sepayOrder = await createSepayOrder({
     payment_code,
@@ -164,8 +170,7 @@ export async function createBuyOrder(usdt_amount: number) {
     va_number: sepayOrder.va_number,
     transfer_content: sepayOrder.transfer_content,
     amount: sepayOrder.amount,
-    order_state: OrderState.PROCESSING,
-    processing_state: 10,
+    order_state: OrderState.CREATED,
   });
   const id = firstInsertedId(inserted);
 
@@ -197,7 +202,9 @@ export async function confirmPayment(params: {
     const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
     const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
     if (result.success && order.callback) {
-      fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, 10, 14, result.hash).catch(() => { });
+      fireCallback(order.callback, order.id, order.order_state, OrderState.COMPLETED, 10, 14, result.hash).catch(() => { });
+    } else if (!result.success && result.error) {
+      await db('orders').where({ id: order.id }).update({ order_state: OrderState.FAILED, processing_state: 15, error_message: result.error });
     }
   }
 }
@@ -210,21 +217,30 @@ export async function getOrderByCode(payment_code: string) {
   return db('orders').where({ payment_code }).first();
 }
 
+export async function getOrderById(id: number) {
+  return db('orders').where({ id }).first();
+}
+
 export async function createDeposit(
   req: DepositRequest,
   options?: CreateOptions
 ): Promise<Usdt247Order> {
-  if (!req.token_address || !req.asset_code || !isSupportedToken(req.token_address, req.asset_code)) {
+  const tokenAddress = req.token_address || '';
+  if (!req.asset_code || !isSupportedToken(tokenAddress, req.asset_code)) {
     throw new Error('UNSUPPORTED_TOKEN');
   }
 
-  const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, req.token_address, req.amount);
+  if (req.asset_code.toUpperCase() === 'XLM' && Number(req.amount) < 1) {
+    throw new Error('XLM_MIN_AMOUNT_1');
+  }
+
+  const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, tokenAddress, req.amount);
   if (!trustlineCheck.exists || !trustlineCheck.authorized || !trustlineCheck.hasLimit) {
     throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
   }
 
   const usdtAmount = Number(req.amount);
-  const result = await createBuyOrder(usdtAmount);
+  const result = await createBuyOrder(usdtAmount, req.asset_code);
   const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
   const updated = await db('orders')
     .where({ payment_code: result.payment_code })
@@ -234,7 +250,7 @@ export async function createDeposit(
       asset_code: req.asset_code,
       recipient: req.recipient,
       callback: req.callback,
-      order_state: OrderState.PROCESSING,
+      order_state: OrderState.CREATED,
       processing_state: 10,
       expired_at: expiredAt,
       va_number: result.sepayOrder.va_number,
@@ -243,7 +259,7 @@ export async function createDeposit(
     })
     .returning('*');
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
-  fireCallback(req.callback, order.id, 0, OrderState.PROCESSING, 0, 10).catch(() => { });
+  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch(() => { });
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
@@ -264,11 +280,12 @@ export async function createWithdrawal(
   req: WithdrawalRequest,
   options?: CreateOptions
 ): Promise<Usdt247Order> {
-  if (!req.token_address || !req.asset_code || !isSupportedToken(req.token_address, req.asset_code)) {
+  const tokenAddress = req.token_address || '';
+  if (!req.asset_code || !isSupportedToken(tokenAddress, req.asset_code)) {
     throw new Error('UNSUPPORTED_TOKEN');
   }
   const usdtAmount = Number(req.amount);
-  const quote = await getQuote('sell', usdtAmount);
+  const quote = await getQuote('sell', usdtAmount, req.asset_code);
   const payment_code = generatePaymentCode();
   const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
   const inserted = await db('orders')
@@ -284,7 +301,7 @@ export async function createWithdrawal(
       order_state: OrderState.CREATED,
       processing_state: 10,
       chain_id: req.chain_id,
-      token_address: req.token_address,
+      token_address: tokenAddress,
       asset_code: req.asset_code,
       callback: req.callback,
       bank_id: req.payment_info.bank_id,
@@ -327,10 +344,8 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
     return { error: 'CANCEL_NOT_ALLOWED' };
   }
 
-  if (currentState === OrderState.PROCESSING) {
-    if (order.sepay_transaction_id || order.payment_status === 'payment_received') {
-      return { error: 'CANCEL_NOT_ALLOWED' };
-    }
+  if (order.sepay_transaction_id || order.payment_status === 'payment_received') {
+    return { error: 'CANCEL_NOT_ALLOWED' };
   }
 
   await db('orders')
@@ -342,6 +357,47 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
     });
 
   const updatedRows = await db('orders').where({ payment_code: paymentCode }).returning('*');
+  const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
+
+  if (order.callback) {
+    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch(() => { });
+  }
+
+  return {
+    data: {
+      payment_code: updated.payment_code,
+      order_state: updated.order_state,
+      cancelled_at: updated.cancelled_at?.toISOString() || new Date().toISOString(),
+    },
+  };
+}
+
+export async function cancelOrderById(orderId: number, reason?: string): Promise<CancelResult> {
+  const order = await db('orders').where({ id: orderId }).first();
+
+  if (!order) {
+    return { error: 'ORDER_NOT_FOUND' };
+  }
+
+  const currentState = order.order_state || 0;
+
+  if (currentState === OrderState.CANCELLED || currentState === OrderState.COMPLETED || currentState === OrderState.FAILED) {
+    return { error: 'CANCEL_NOT_ALLOWED' };
+  }
+
+  if (order.sepay_transaction_id || order.payment_status === 'payment_received') {
+    return { error: 'CANCEL_NOT_ALLOWED' };
+  }
+
+  await db('orders')
+    .where({ id: orderId })
+    .update({
+      order_state: OrderState.CANCELLED,
+      cancelled_at: db.fn.now(),
+      cancel_reason: reason || null,
+    });
+
+  const updatedRows = await db('orders').where({ id: orderId }).returning('*');
   const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
 
   if (order.callback) {
@@ -474,6 +530,7 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     });
     return { success: true };
   } catch (err) {
+    console.error(`[Bypass] confirmPayment failed for order ${orderId}:`, err);
     return { error: 'CONFIRMATION_FAILED' };
   }
 }
