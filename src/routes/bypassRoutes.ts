@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { bypassPayment } from '../services/orderService';
+import { adminAuth } from '../middlewares/adminAuth';
 
 interface BypassPaymentBody {
   admin_key: string;

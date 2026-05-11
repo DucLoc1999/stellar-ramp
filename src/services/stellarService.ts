@@ -1,5 +1,6 @@
 import db from '../db';
 import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
+import { OrderState } from '../models/types';
 
 export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
@@ -52,9 +53,9 @@ export async function checkTrustline(
   amount?: string
 ): Promise<TrustlineCheckResult> {
   const isXlmNative = !assetIssuer || assetCode.toUpperCase() === 'XLM';
-  
+
   const account = await getHorizonAccount(publicKey);
-  
+
   if (!account) {
     if (isXlmNative) {
       return { exists: true, authorized: true, hasLimit: true, availableLimit: Infinity };
@@ -123,7 +124,14 @@ export async function getXlmBalance(publicKey: string, network?: string): Promis
 }
 
 export async function loadHotWallet() {
-  return { publicKey: '', network: 'testnet' };
+  const walletName = process.env.STELLAR_HOT_WALLET_NAME || 'stellar_hot_wallet';
+  const row = await db('system_wallets')
+    .where({ name: walletName, is_active: true })
+    .first();
+  if (!row) {
+    return { publicKey: '', network: 'testnet' };
+  }
+  return { publicKey: row.public_key, network: row.network };
 }
 
 export async function initStellarServer(network?: string) {
@@ -167,16 +175,6 @@ async function callWorker(
 
   const amountFormatted = parseFloat(amount).toFixed(7).replace(/\.?0+$/, '');
   requestBody.amount = amountFormatted;
-
-  console.log('[StellarService] Calling worker:', {
-    url: workerUrl,
-    destination,
-    amount: amountFormatted,
-    memo,
-    network,
-    token_code: tokenCode || 'XLM (native)',
-    token_address: tokenAddress || 'N/A',
-  });
 
   const response = await fetch(workerUrl, {
     method: 'POST',
@@ -234,10 +232,10 @@ export async function disburseUSDC(
 
   if (result.success) {
     await db('orders')
-      .where({ id: orderId })
+      .where({ id: orderId, order_state: OrderState.PROCESSING })
       .update({
         transaction_hash: result.hash,
-        order_state: 3,
+        order_state: OrderState.COMPLETED,
         processing_state: 14,
       });
   } else {
@@ -245,9 +243,9 @@ export async function disburseUSDC(
 
     try {
       await db('orders')
-        .where({ id: orderId })
+        .where({ id: orderId, order_state: OrderState.PROCESSING })
         .update({
-          order_state: 4,
+          order_state: OrderState.FAILED,
           processing_state: 15,
           error_message: errorMsg,
         });

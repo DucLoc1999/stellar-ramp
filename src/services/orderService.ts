@@ -45,6 +45,8 @@ interface OrderRow {
   va_number: string | null;
   transfer_content: string | null;
   amount: string | number | null;
+  sepay_transaction_id?: string | null;
+  last_webhook_id?: string | null;
 }
 
 export interface CreateOptions {
@@ -202,7 +204,7 @@ export async function confirmPayment(params: {
     const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
     const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
     if (result.success && order.callback) {
-      fireCallback(order.callback, order.id, order.order_state, OrderState.COMPLETED, 10, 14, result.hash).catch(() => { });
+      fireCallback(order.callback, order.id, order.order_state, OrderState.COMPLETED, 10, 14, result.hash).catch((err) => console.error('[OrderService] fireCallback failed:', err));
     } else if (!result.success && result.error) {
       await db('orders').where({ id: order.id }).update({ order_state: OrderState.FAILED, processing_state: 15, error_message: result.error });
     }
@@ -259,7 +261,7 @@ export async function createDeposit(
     })
     .returning('*');
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch(() => { });
+  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
@@ -312,7 +314,7 @@ export async function createWithdrawal(
     })
     .returning('*');
   const order = firstRow<OrderRow>(inserted as OrderRow | OrderRow[]);
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch(() => { });
+  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
 
   const hotWallet = await loadHotWallet();
   return await toApiOrder(order as OrderRow, {
@@ -331,13 +333,7 @@ interface CancelResult {
   error?: string;
 }
 
-export async function cancelOrder(paymentCode: string, reason?: string): Promise<CancelResult> {
-  const order = await db('orders').where({ payment_code: paymentCode }).first();
-
-  if (!order) {
-    return { error: 'ORDER_NOT_FOUND' };
-  }
-
+async function performCancel(order: OrderRow, reason?: string): Promise<CancelResult> {
   const currentState = order.order_state || 0;
 
   if (currentState === OrderState.CANCELLED || currentState === OrderState.COMPLETED || currentState === OrderState.FAILED) {
@@ -348,19 +344,19 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
     return { error: 'CANCEL_NOT_ALLOWED' };
   }
 
-  await db('orders')
-    .where({ payment_code: paymentCode })
+  const idOrPaymentCode = order.payment_code ? { payment_code: order.payment_code } : { id: order.id };
+  const updatedRows = await db('orders')
+    .where(idOrPaymentCode)
     .update({
       order_state: OrderState.CANCELLED,
       cancelled_at: db.fn.now(),
       cancel_reason: reason || null,
-    });
-
-  const updatedRows = await db('orders').where({ payment_code: paymentCode }).returning('*');
+    })
+    .returning('*');
   const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch(() => { });
+    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
 
   return {
@@ -372,45 +368,20 @@ export async function cancelOrder(paymentCode: string, reason?: string): Promise
   };
 }
 
-export async function cancelOrderById(orderId: number, reason?: string): Promise<CancelResult> {
-  const order = await db('orders').where({ id: orderId }).first();
-
+export async function cancelOrder(paymentCode: string, reason?: string): Promise<CancelResult> {
+  const order = await db('orders').where({ payment_code: paymentCode }).first();
   if (!order) {
     return { error: 'ORDER_NOT_FOUND' };
   }
+  return performCancel(order, reason);
+}
 
-  const currentState = order.order_state || 0;
-
-  if (currentState === OrderState.CANCELLED || currentState === OrderState.COMPLETED || currentState === OrderState.FAILED) {
-    return { error: 'CANCEL_NOT_ALLOWED' };
+export async function cancelOrderById(orderId: number, reason?: string): Promise<CancelResult> {
+  const order = await db('orders').where({ id: orderId }).first();
+  if (!order) {
+    return { error: 'ORDER_NOT_FOUND' };
   }
-
-  if (order.sepay_transaction_id || order.payment_status === 'payment_received') {
-    return { error: 'CANCEL_NOT_ALLOWED' };
-  }
-
-  await db('orders')
-    .where({ id: orderId })
-    .update({
-      order_state: OrderState.CANCELLED,
-      cancelled_at: db.fn.now(),
-      cancel_reason: reason || null,
-    });
-
-  const updatedRows = await db('orders').where({ id: orderId }).returning('*');
-  const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
-
-  if (order.callback) {
-    fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch(() => { });
-  }
-
-  return {
-    data: {
-      payment_code: updated.payment_code,
-      order_state: updated.order_state,
-      cancelled_at: updated.cancelled_at?.toISOString() || new Date().toISOString(),
-    },
-  };
+  return performCancel(order, reason);
 }
 
 export async function updateOrderState(paymentCode: string, newState: number | string): Promise<void> {
@@ -423,7 +394,7 @@ export async function updateOrderState(paymentCode: string, newState: number | s
   await db('orders').where({ payment_code: paymentCode }).update({ order_state: stateNum });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, stateNum, oldProcessingState, oldProcessingState).catch(() => { });
+    fireCallback(order.callback, order.id, oldState, stateNum, oldProcessingState, oldProcessingState).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
 }
 
@@ -490,7 +461,7 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
     });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, 14).catch(() => { });
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, 14).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
 
   return { success: true };

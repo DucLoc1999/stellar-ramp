@@ -36,7 +36,9 @@ export async function chainWebhookAuth(req: FastifyRequest, reply: FastifyReply)
     .update(`${timestamp}.${body}`)
     .digest('hex');
 
-  if (signature !== expectedSignature) {
+  const sigBuf = Buffer.from(signature, 'hex');
+  const expectedBuf = Buffer.from(expectedSignature, 'hex');
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
     return createErrorReply(reply, 'UNAUTHORIZED', 'Invalid webhook signature', req.id);
   }
 }

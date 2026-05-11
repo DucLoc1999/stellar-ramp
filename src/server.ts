@@ -3,8 +3,10 @@ import { buildApp } from './app';
 import { logger } from './config/logger';
 import { appConfig } from './config/app';
 import { initStellarServer, loadHotWallet, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE } from './services/stellarService';
-import { initKafka } from './services/queueService';
+import { initKafka, disconnectKafka } from './services/queueService';
 import db from './db';
+
+let app: ReturnType<typeof buildApp> extends Promise<infer T> ? T : never;
 
 async function healthCheck() {
   try {
@@ -37,12 +39,32 @@ async function checkHotWalletTrustline() {
   }
 }
 
+async function gracefulShutdown(signal: string) {
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+  try {
+    await disconnectKafka();
+    await db.destroy();
+    if (app && app.close) {
+      await app.close();
+    }
+    logger.info('Graceful shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    logger.error({ err }, 'Error during graceful shutdown');
+    process.exit(1);
+  }
+}
+
 async function start() {
   await healthCheck();
   await checkKafkaConnection();
   // await checkHotWalletTrustline();
 
-  const app = await buildApp();
+  const builtApp = await buildApp();
+  app = builtApp as typeof app;
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   const port = appConfig.port;
   const host = appConfig.host;

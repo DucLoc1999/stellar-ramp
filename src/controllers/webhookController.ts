@@ -11,10 +11,11 @@ export async function handleSepayWebhook(
 ) {
   try {
     await processSepayWebhook(req.body);
+    reply.send({ success: true });
   } catch (err) {
     app.log.error({ err }, 'sepay webhook processing error');
+    reply.code(500).send({ success: false, error: 'Processing failed' });
   }
-  reply.send({ success: true });
 }
 
 interface ChainWebhookBody {

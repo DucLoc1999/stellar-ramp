@@ -5,7 +5,7 @@ const schema = process.env.DB_SCHEMA ?? 'payment_svc';
 export async function up(knex: Knex): Promise<void> {
   await knex.schema.withSchema(schema).createTable('webhook_logs', (t) => {
     t.increments('id');
-    t.integer('sepay_transaction_id').notNullable().unique();
+    t.bigInteger('sepay_transaction_id').notNullable().unique();
     t.jsonb('body').notNullable();
     t.timestamp('created_at').defaultTo(knex.fn.now());
   });
