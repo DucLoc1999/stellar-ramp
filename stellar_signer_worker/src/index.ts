@@ -322,12 +322,12 @@ export default {
       const transaction = builder.setTimeout(30).build();
       transaction.sign(sourceKeypair);
 
-      // const result = await server.submitTransaction(transaction);
+      const result = await server.submitTransaction(transaction);
       // for test pupose only return transaction signed instead of submit
-      const result = {
-        hash: transaction.hash().toString('hex'),
-        ledger: 0,
-      };
+      // const result = {
+      //   hash: transaction.hash().toString('hex'),
+      //   ledger: 0,
+      // };
 
       return jsonResponse({
         success: true,
