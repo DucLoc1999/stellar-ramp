@@ -237,7 +237,12 @@ export async function createDeposit(
   }
 
   const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, tokenAddress, req.amount);
-  if (!trustlineCheck.exists || !trustlineCheck.authorized || !trustlineCheck.hasLimit) {
+  if (!trustlineCheck.exists) {
+    console.error(`[OrderService] Trustline check failed for ${req.recipient}: trustline does not exist for ${req.asset_code} (issuer: ${tokenAddress})`);
+    throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
+  }
+  if (!trustlineCheck.hasLimit) {
+    console.error(`[OrderService] Trustline check failed for ${req.recipient}: insufficient limit. Available: ${trustlineCheck.availableLimit}, Requested: ${req.amount}`);
     throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
   }
 

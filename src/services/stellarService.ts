@@ -2,7 +2,7 @@ import db from '../db';
 import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
 import { OrderState } from '../models/types';
 
-export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || '';
 export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
 
 const HORIZON_URLS: Record<string, string> = {
@@ -56,22 +56,29 @@ export async function checkTrustline(
 
   const account = await getHorizonAccount(publicKey);
 
+  console.log(`[StellarService] checkTrustline: publicKey=${publicKey}, assetCode=${assetCode}, assetIssuer=${assetIssuer}, amount=${amount}`);
+
   if (!account) {
     if (isXlmNative) {
+      console.log(`[StellarService] Account not found but XLM is native, returning success`);
       return { exists: true, authorized: true, hasLimit: true, availableLimit: Infinity };
     }
+    console.error(`[StellarService] Account not found: ${publicKey}`);
     return { exists: false, authorized: false, hasLimit: false, availableLimit: 0, error: 'Account not found' };
   }
 
   if (isXlmNative) {
     const nativeBal = account.balances.find((b) => b.asset_type === 'native');
     if (!nativeBal) {
+      console.error(`[StellarService] No native balance found for: ${publicKey}`);
       return { exists: false, authorized: false, hasLimit: false, availableLimit: 0 };
     }
     const balanceNum = parseFloat(nativeBal.balance);
+    console.log(`[StellarService] XLM native balance: ${balanceNum}`);
     if (amount) {
       const requestedAmount = parseFloat(amount);
       const hasEnough = balanceNum >= requestedAmount;
+      console.log(`[StellarService] XLM check: balance=${balanceNum}, requested=${requestedAmount}, hasEnough=${hasEnough}`);
       return { exists: true, authorized: true, hasLimit: hasEnough, availableLimit: balanceNum };
     }
     return { exists: true, authorized: true, hasLimit: true, availableLimit: balanceNum };
@@ -82,21 +89,24 @@ export async function checkTrustline(
   );
 
   if (!balance) {
+    console.error(`[StellarService] No trustline found for ${assetCode} (issuer: ${assetIssuer}) on ${publicKey}`);
     return { exists: false, authorized: false, hasLimit: false, availableLimit: 0 };
   }
 
   const balanceNum = parseFloat(balance.balance);
-  const authorized = balanceNum > 0;
   const limit = balance.limit ? parseFloat(balance.limit) : Infinity;
   const availableLimit = limit === Infinity ? Infinity : limit - balanceNum;
+
+  console.log(`[StellarService] Trustline found: balance=${balanceNum}, limit=${limit}, availableLimit=${availableLimit}`);
 
   if (amount) {
     const requestedAmount = parseFloat(amount);
     const hasEnoughLimit = availableLimit >= requestedAmount;
-    return { exists: true, authorized, hasLimit: hasEnoughLimit, availableLimit };
+    console.log(`[StellarService] Limit check: available=${availableLimit}, requested=${requestedAmount}, hasEnoughLimit=${hasEnoughLimit}`);
+    return { exists: true, authorized: true, hasLimit: hasEnoughLimit, availableLimit };
   }
 
-  return { exists: true, authorized, hasLimit: true, availableLimit };
+  return { exists: true, authorized: true, hasLimit: true, availableLimit };
 }
 
 export async function hasTrustline(publicKey: string, assetCode: string, assetIssuer: string): Promise<boolean> {
