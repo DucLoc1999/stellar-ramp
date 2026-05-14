@@ -1,7 +1,7 @@
 import { CheckCircle2, Shield } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ExchangeRatesResponse } from "@shared/api";
+import { AllRatesResponse, OurRate } from "@shared/api";
 
 const BOT_URL =
   import.meta.env.VITE_TELEGRAM_LINK || "https://t.me/usdt247shopbot";
@@ -9,17 +9,17 @@ const BOT_URL =
 const CACHE_TTL = 60_000;
 const clientCache = new Map<
   string,
-  { data: ExchangeRatesResponse; expiresAt: number }
+  { data: AllRatesResponse; expiresAt: number }
 >();
 
-async function fetchRate(url: string): Promise<ExchangeRatesResponse | null> {
+async function fetchRates(url: string): Promise<AllRatesResponse | null> {
   const cached = clientCache.get(url);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
 
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
-    const data: ExchangeRatesResponse = await res.json();
+    const data: AllRatesResponse = await res.json();
     clientCache.set(url, { data, expiresAt: Date.now() + CACHE_TTL });
     return data;
   } catch {
@@ -29,7 +29,7 @@ async function fetchRate(url: string): Promise<ExchangeRatesResponse | null> {
 
 export const HeroSection = () => {
   const { t } = useTranslation();
-  const [usdcRates, setUsdcRates] = useState<ExchangeRatesResponse | null>(null);
+  const [usdcRates, setUsdcRates] = useState<OurRate | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [usdcBuyInput, setUsdcBuyInput] = useState("");
@@ -42,9 +42,9 @@ export const HeroSection = () => {
 
     async function load() {
       setLoading(true);
-      const usdc = await fetchRate("/api/exchange-rate");
+      const data = await fetchRates("/api/p2p-rates");
       if (!cancelled) {
-        setUsdcRates(usdc);
+        setUsdcRates(data?.our ?? null);
         setLoading(false);
         lastFetchRef.current = Date.now();
         setProgress(100);

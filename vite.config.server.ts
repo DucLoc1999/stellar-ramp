@@ -16,7 +16,6 @@ export default defineConfig({
       external: [
         'fs', 'path', 'url', 'http', 'https', 'os', 'crypto',
         'stream', 'util', 'events', 'buffer', 'querystring', 'child_process',
-        'node:sqlite',
         'express', 'cors', 'dotenv/config',
       ],
       output: {

@@ -6,7 +6,7 @@ import {
   ChartLegend,
   ChartLegendContent,
 } from "../ui/chart";
-import { ExchangeRatesResponse, P2PRate, P2PHistoryPoint } from "@shared/api";
+import { AllRatesResponse, AllHistoryResponse, P2PHistoryPoint } from "@shared/api";
 import { SectionHeading } from "./SectionHeading";
 
 const CACHE_TTL = 60_000;
@@ -115,8 +115,7 @@ function formatLabel(ts: number): string {
 
 interface ExchangeChartProps {
   title: string;
-  historyEndpoint: string;
-  range: 7 | 30;
+  history: P2PHistoryPoint[];
   tall?: boolean;
   config: AnyConfig;
   tooltipContent: React.ReactElement;
@@ -125,26 +124,12 @@ interface ExchangeChartProps {
 
 function ExchangeChart({
   title,
-  historyEndpoint,
-  range,
+  history,
   tall,
   config,
   tooltipContent,
   dataKeys,
 }: ExchangeChartProps) {
-  const [history, setHistory] = useState<P2PHistoryPoint[]>([]);
-
-  useEffect(() => {
-    const load = () =>
-      fetch(`${historyEndpoint}?days=${range}`)
-        .then((r) => r.json())
-        .then(setHistory)
-        .catch(console.error);
-    load();
-    const interval = setInterval(load, CACHE_TTL);
-    return () => clearInterval(interval);
-  }, [historyEndpoint, range]);
-
   const chartData = history.map((row) => ({
     date: formatLabel(row.created_at),
     buy: row.buy,
@@ -216,38 +201,14 @@ function ExchangeChart({
 interface ComparisonChartProps {
   title: string;
   side: "buy" | "sell";
-  range: 7 | 30;
+  historyData: AllHistoryResponse | null;
 }
 
-function ComparisonChart({ title, side, range }: ComparisonChartProps) {
-  const [ours, setOurs] = useState<P2PHistoryPoint[]>([]);
-  const [binance, setBinance] = useState<P2PHistoryPoint[]>([]);
-  const [okx, setOkx] = useState<P2PHistoryPoint[]>([]);
-  const [bybit, setBybit] = useState<P2PHistoryPoint[]>([]);
-
-  useEffect(() => {
-    const load = () => {
-      fetch(`/api/our-price-history?days=${range}`)
-        .then((r) => r.json())
-        .then(setOurs)
-        .catch(console.error);
-      fetch(`/api/binance-p2p-history?days=${range}`)
-        .then((r) => r.json())
-        .then(setBinance)
-        .catch(console.error);
-      fetch(`/api/okx-p2p-history?days=${range}`)
-        .then((r) => r.json())
-        .then(setOkx)
-        .catch(console.error);
-      fetch(`/api/bybit-p2p-history?days=${range}`)
-        .then((r) => r.json())
-        .then(setBybit)
-        .catch(console.error);
-    };
-    load();
-    const interval = setInterval(load, CACHE_TTL);
-    return () => clearInterval(interval);
-  }, [range]);
+function ComparisonChart({ title, side, historyData }: ComparisonChartProps) {
+  const ours = historyData?.our ?? [];
+  const binance = historyData?.binance ?? [];
+  const okx = historyData?.okx ?? [];
+  const bybit = historyData?.bybit ?? [];
 
   const merged = new Map<
     number,
@@ -397,6 +358,7 @@ export const RatesSection = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<7 | 30>(7);
+  const [historyData, setHistoryData] = useState<AllHistoryResponse | null>(null);
   const isFirstLoad = useRef(true);
 
   async function load() {
@@ -407,12 +369,7 @@ export const RatesSection = () => {
       await new Promise((r) => setTimeout(r, 150));
     }
 
-    const [usdc, binance, okx, bybit] = await Promise.all([
-      fetchCached<ExchangeRatesResponse>("/api/exchange-rate"),
-      fetchCached<P2PRate>("/api/binance-p2p-rate"),
-      fetchCached<P2PRate>("/api/okx-p2p-rate"),
-      fetchCached<P2PRate>("/api/bybit-p2p-rate"),
-    ]);
+    const rates = await fetchCached<AllRatesResponse>("/api/p2p-rates");
 
     setRows([
       {
@@ -420,8 +377,8 @@ export const RatesSection = () => {
         network: "Stellar Ramp",
         subLabel: "Stellar",
         logo: "/exchanges/stellarRamp.png",
-        buy: usdc?.buy ?? null,
-        sell: usdc?.sell ?? null,
+        buy: rates?.our.buy ?? null,
+        sell: rates?.our.sell ?? null,
         isFeatured: true,
       },
       {
@@ -429,8 +386,8 @@ export const RatesSection = () => {
         network: "Binance P2P",
         subLabel: "BSC (BEP20)",
         logo: "/exchanges/binance.png",
-        buy: binance?.bestBuyPrice ?? null,
-        sell: binance?.bestSellPrice ?? null,
+        buy: rates?.binance.bestBuyPrice ?? null,
+        sell: rates?.binance.bestSellPrice ?? null,
         isCompetitor: true,
       },
       {
@@ -438,8 +395,8 @@ export const RatesSection = () => {
         network: "OKX P2P",
         subLabel: "OKX",
         logo: "/exchanges/okx.png",
-        buy: okx?.bestBuyPrice ?? null,
-        sell: okx?.bestSellPrice ?? null,
+        buy: rates?.okx.bestBuyPrice ?? null,
+        sell: rates?.okx.bestSellPrice ?? null,
         isCompetitor: true,
       },
       {
@@ -447,8 +404,8 @@ export const RatesSection = () => {
         network: "Bybit P2P",
         subLabel: "Bybit",
         logo: "/exchanges/bybit.png",
-        buy: bybit?.bestBuyPrice ?? null,
-        sell: bybit?.bestSellPrice ?? null,
+        buy: rates?.bybit.bestBuyPrice ?? null,
+        sell: rates?.bybit.bestSellPrice ?? null,
         isCompetitor: true,
       },
     ]);
@@ -456,11 +413,22 @@ export const RatesSection = () => {
     setRefreshing(false);
   }
 
+  async function loadHistory() {
+    const data = await fetchCached<AllHistoryResponse>(`/api/p2p-history?days=${range}`);
+    if (data) setHistoryData(data);
+  }
+
   useEffect(() => {
     load();
     const interval = setInterval(load, CACHE_TTL);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    loadHistory();
+    const interval = setInterval(loadHistory, CACHE_TTL);
+    return () => clearInterval(interval);
+  }, [range]);
 
   const ROWS_COUNT = 4;
 
@@ -785,8 +753,7 @@ export const RatesSection = () => {
         {/* USDC our price chart */}
         <ExchangeChart
           title="USDC / VND — Stellar Ramp (Mua / Bán)"
-          historyEndpoint="/api/our-price-history"
-          range={range}
+          history={historyData?.our ?? []}
           config={EXCHANGE_CHART_CONFIG}
           tooltipContent={<ExchangeTooltip />}
           dataKeys={[
@@ -800,12 +767,12 @@ export const RatesSection = () => {
           <ComparisonChart
             title="So sánh giá Mua USDC P2P (Buy)"
             side="buy"
-            range={range}
+            historyData={historyData}
           />
           <ComparisonChart
             title="So sánh giá Bán USDC P2P (Sell)"
             side="sell"
-            range={range}
+            historyData={historyData}
           />
         </div>
 
