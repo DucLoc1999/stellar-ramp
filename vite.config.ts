@@ -1,11 +1,10 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig, Plugin } from 'vite';
-import { createServer } from './server/index';
+import { defineConfig } from 'vite';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), expressPlugin()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
@@ -17,7 +16,7 @@ export default defineConfig({
     port: 5173,
     hmr: process.env.DISABLE_HMR !== 'true',
     fs: {
-      allow: ['.', './shared', './server'],
+      allow: ['.', './shared'],
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**'],
     },
   },
@@ -25,14 +24,3 @@ export default defineConfig({
     outDir: 'dist/spa',
   },
 });
-
-function expressPlugin(): Plugin {
-  return {
-    name: 'express-plugin',
-    apply: 'serve',
-    configureServer(server) {
-      const app = createServer();
-      server.middlewares.use(app);
-    },
-  };
-}

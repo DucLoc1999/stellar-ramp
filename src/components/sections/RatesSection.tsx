@@ -9,6 +9,7 @@ import {
 import { AllRatesResponse, AllHistoryResponse, P2PHistoryPoint } from "@shared/api";
 import { SectionHeading } from "./SectionHeading";
 
+const API_BASE = import.meta.env.VITE_BASE_URL || "http://localhost:3001";
 const CACHE_TTL = 60_000;
 const clientCache = new Map<string, { data: unknown; expiresAt: number }>();
 
@@ -369,7 +370,7 @@ export const RatesSection = () => {
       await new Promise((r) => setTimeout(r, 150));
     }
 
-    const rates = await fetchCached<AllRatesResponse>("/api/p2p-rates");
+    const rates = await fetchCached<AllRatesResponse>(`${API_BASE}/landing/p2p-rates`);
 
     setRows([
       {
@@ -414,7 +415,7 @@ export const RatesSection = () => {
   }
 
   async function loadHistory() {
-    const data = await fetchCached<AllHistoryResponse>(`/api/p2p-history?days=${range}`);
+    const data = await fetchCached<AllHistoryResponse>(`${API_BASE}/landing/p2p-history?days=${range}`);
     if (data) setHistoryData(data);
   }
 

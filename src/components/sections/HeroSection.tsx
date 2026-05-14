@@ -12,7 +12,10 @@ const clientCache = new Map<
   { data: AllRatesResponse; expiresAt: number }
 >();
 
-async function fetchRates(url: string): Promise<AllRatesResponse | null> {
+const API_BASE = import.meta.env.VITE_BASE_URL || "http://localhost:3001";
+
+async function fetchRates(): Promise<AllRatesResponse | null> {
+  const url = `${API_BASE}/landing/p2p-rates`;
   const cached = clientCache.get(url);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
 
@@ -42,7 +45,7 @@ export const HeroSection = () => {
 
     async function load() {
       setLoading(true);
-      const data = await fetchRates("/api/p2p-rates");
+      const data = await fetchRates();
       if (!cancelled) {
         setUsdcRates(data?.our ?? null);
         setLoading(false);
