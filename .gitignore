@@ -3,6 +3,7 @@
 .env.local
 .env.prod
 ecosystem.config.js
+# .yaml
 
 # build output
 dist/

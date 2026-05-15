@@ -4,9 +4,11 @@ import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
 import { getConfigNumber } from './configService';
+import { executePayout } from './payoutService';
+import { emitOrderPaid } from './queueService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
-import { OrderState } from '../models/types';
+import { OrderState, ProcessingState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
@@ -47,6 +49,9 @@ interface OrderRow {
   amount: string | number | null;
   sepay_transaction_id?: string | null;
   last_webhook_id?: string | null;
+  bank_id: string | null;
+  bank_account_name: string | null;
+  bank_account_no: string | null;
 }
 
 export interface CreateOptions {
@@ -200,6 +205,9 @@ export async function confirmPayment(params: {
     });
 
   if (order.direction === 'buy' && order.recipient) {
+    await db('orders')
+      .where({ payment_code: params.payment_code })
+      .update({ order_state: OrderState.PROCESSING });
     const usdtAmount = order.usdt_amount.toString();
     const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
     const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
@@ -403,44 +411,50 @@ export async function updateOrderState(paymentCode: string, newState: number | s
   }
 }
 
-interface ChainEventParams {
-  paymentCode: string;
+export async function processSellPayment(params: {
   txHash: string;
+  from?: string;
   amount: string;
-  address: string;
-  chainId: number;
-  tokenAddress?: string;
-  assetCode?: string;
-}
+  asset: string;
+  tokenIssuer?: string;
+  memo?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { txHash, from, amount, asset, tokenIssuer, memo } = params;
 
-interface ChainEventResult {
-  success: boolean;
-  error?: string;
-}
+  let order: OrderRow | undefined;
 
-export async function handleChainEvent(params: ChainEventParams): Promise<ChainEventResult> {
-  const { paymentCode, txHash, amount, address, chainId, tokenAddress, assetCode } = params;
+  if (memo) {
+    order = await db('orders')
+      .where({ payment_code: memo, direction: 'sell', order_state: OrderState.CREATED })
+      .first();
+  }
 
-  const order = await db('orders').where({ payment_code: paymentCode }).first();
+  if (!order) {
+    const webhookAmount = parseFloat(amount);
+    const allSellOrders = await db('orders')
+      .where({ direction: 'sell', order_state: OrderState.CREATED })
+      .orderBy('created_at', 'asc');
+    for (const o of allSellOrders) {
+      const orderAmount = typeof o.usdt_amount === 'string' ? parseFloat(o.usdt_amount) : o.usdt_amount;
+      const diff = Math.abs(webhookAmount - orderAmount) / orderAmount;
+      if (diff <= 0.01) {
+        order = o as OrderRow;
+        break;
+      }
+    }
+  }
 
   if (!order) {
     return { success: false, error: 'Order not found' };
   }
 
-  if (order.direction !== 'sell') {
-    return { success: false, error: 'Chain webhook only applicable to sell orders' };
-  }
-
-  if (order.recipient && order.recipient !== address) {
-    return { success: false, error: 'Address mismatch' };
-  }
-
-  if (tokenAddress && order.token_address && order.token_address !== tokenAddress) {
-    return { success: false, error: 'Token issuer mismatch' };
-  }
-
-  if (assetCode && order.asset_code && order.asset_code !== assetCode) {
+  const orderAssetCode = (order.asset_code || '').toUpperCase();
+  if (asset.toUpperCase() !== orderAssetCode) {
     return { success: false, error: 'Asset code mismatch' };
+  }
+
+  if (tokenIssuer && order.token_address && tokenIssuer !== order.token_address) {
+    return { success: false, error: 'Token issuer mismatch' };
   }
 
   const orderUsdtAmount = typeof order.usdt_amount === 'string'
@@ -458,18 +472,87 @@ export async function handleChainEvent(params: ChainEventParams): Promise<ChainE
   const oldProcessingState = order.processing_state || 0;
 
   await db('orders')
-    .where({ payment_code: paymentCode })
+    .where({ id: order.id })
     .update({
+      payment_status: 'payment_received',
       order_state: OrderState.PROCESSING,
-      processing_state: 14,
+      processing_state: ProcessingState.SELL_PAYMENT_RECEIVED,
       transaction_hash: txHash,
     });
 
   if (order.callback) {
-    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, 14).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+    fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, ProcessingState.SELL_PAYMENT_RECEIVED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
 
-  return { success: true };
+  const payInfo = typeof order.payment_info === 'string'
+    ? JSON.parse(order.payment_info)
+    : order.payment_info;
+
+  const payoutResult = await executePayout({
+    orderId: order.id,
+    amount: Number(order.net_vnd),
+    bankId: order.bank_id || (payInfo?.bank_id as string) || '',
+    bankAccountName: order.bank_account_name || (payInfo?.full_name as string) || '',
+    bankAccountNo: order.bank_account_no || (payInfo?.account_number as string) || '',
+    description: order.payment_code,
+  });
+
+  if (payoutResult.success) {
+    await db('orders')
+      .where({ id: order.id })
+      .update({
+        order_state: OrderState.COMPLETED,
+        processing_state: ProcessingState.SELL_PAYOUT_COMPLETED,
+      });
+
+    if (order.callback) {
+      fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_COMPLETED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+    }
+
+    await emitOrderPaid({
+      orderId: order.id,
+      amount,
+      txHash,
+      paymentCode: order.payment_code,
+    });
+  } else {
+    await db('orders')
+      .where({ id: order.id })
+      .update({
+        order_state: OrderState.FAILED,
+        processing_state: ProcessingState.SELL_PAYOUT_FAILED,
+        error_message: payoutResult.error || 'Payout failed',
+      });
+
+    if (order.callback) {
+      fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+    }
+  }
+
+  return { success: payoutResult.success, error: payoutResult.error };
+}
+
+export async function bypassSellPayment(adminKey: string, orderId: number): Promise<{ success?: boolean; error?: string }> {
+  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  if (!bootstrapPassword || adminKey !== bootstrapPassword) {
+    return { error: 'INVALID_ADMIN_CODE' };
+  }
+
+  const order = await db('orders').where({ id: orderId }).first();
+  if (!order) return { error: 'ORDER_NOT_FOUND' };
+  if (order.direction !== 'sell') return { error: 'NOT_SELL_ORDER' };
+  if (order.order_state !== OrderState.CREATED) return { error: 'ORDER_NOT_ELIGIBLE' };
+  if (order.payment_status !== 'pending') return { error: 'PAYMENT_ALREADY_RECEIVED' };
+
+  const result = await processSellPayment({
+    txHash: `bypass-${Date.now()}`,
+    amount: String(order.usdt_amount),
+    asset: order.asset_code || 'USDC',
+    tokenIssuer: order.token_address,
+    memo: order.payment_code,
+  });
+
+  return result.success ? { success: true } : { error: result.error };
 }
 
 export async function bypassPayment(adminKey: string, orderId: number): Promise<{ success?: boolean; error?: string }> {

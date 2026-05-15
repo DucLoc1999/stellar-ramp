@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { bypassPayment } from '../services/orderService';
+import { bypassPayment, bypassSellPayment } from '../services/orderService';
 import { adminAuth } from '../middlewares/adminAuth';
 
 interface BypassPaymentBody {
@@ -24,6 +24,28 @@ export async function bypassRoutes(app: FastifyInstance): Promise<void> {
   }, async (req, reply) => {
     const { admin_key, order_id } = req.body;
     const result = await bypassPayment(admin_key, order_id);
+    if (result.error) {
+      return reply.status(400).send({ success: false, error: result.error });
+    }
+    return reply.send({ success: true });
+  });
+
+  app.post<{ Body: BypassPaymentBody }>('/bypass-sell-payment', {
+    schema: {
+      tags: ['Bypass'],
+      summary: 'Bypass payment for sell order (admin key)',
+      body: {
+        type: 'object',
+        required: ['admin_key', 'order_id'],
+        properties: {
+          admin_key: { type: 'string' },
+          order_id: { type: 'integer' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const { admin_key, order_id } = req.body;
+    const result = await bypassSellPayment(admin_key, order_id);
     if (result.error) {
       return reply.status(400).send({ success: false, error: result.error });
     }

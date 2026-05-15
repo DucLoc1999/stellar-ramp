@@ -242,7 +242,7 @@ export async function disburseUSDC(
 
   if (result.success) {
     await db('orders')
-      .where({ id: orderId, order_state: OrderState.PROCESSING })
+      .where({ id: orderId })
       .update({
         transaction_hash: result.hash,
         order_state: OrderState.COMPLETED,
@@ -253,7 +253,7 @@ export async function disburseUSDC(
 
     try {
       await db('orders')
-        .where({ id: orderId, order_state: OrderState.PROCESSING })
+        .where({ id: orderId })
         .update({
           order_state: OrderState.FAILED,
           processing_state: 15,

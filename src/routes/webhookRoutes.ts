@@ -3,7 +3,7 @@ import { sepayAuth } from '../middlewares/sepayAuth';
 import { chainWebhookAuth } from '../middlewares/chainWebhookAuth';
 import type { SepayWebhookPayload } from '../models/types';
 import { handleSepayWebhook } from '../controllers/webhookController';
-import { handleChainWebhook } from '../controllers/webhookController';
+import { handleChainWebhook, handleStellarIncoming } from '../controllers/webhookController';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', sepayAuth);
@@ -67,6 +67,33 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleChainWebhook);
+
+  app.post<{ Body: StellarIncomingBody }>('/stellar-incoming', {
+    preHandler: sepayAuth,
+    schema: {
+      tags: ['Webhooks'],
+      summary: 'Stellar incoming webhook — fallback when Kafka unavailable',
+      body: {
+        type: 'object',
+        required: ['txHash', 'amount', 'asset'],
+        properties: {
+          txHash: { type: 'string' },
+          from: { type: 'string' },
+          to: { type: 'string' },
+          amount: { type: 'string' },
+          asset: { type: 'string' },
+          tokenIssuer: { type: 'string' },
+          timestamp: { type: 'string' },
+          walletLabel: { type: 'string' },
+          memo: { type: 'string' },
+        },
+      },
+      response: {
+        200: { type: 'object', properties: { success: { type: 'boolean' } } },
+        400: { type: 'object', properties: { success: { type: 'boolean' }, error: { type: 'object' } } },
+      },
+    },
+  }, handleStellarIncoming);
 }
 
 interface ChainWebhookBody {
@@ -75,4 +102,18 @@ interface ChainWebhookBody {
   amount: string;
   address: string;
   chain_id: number;
+  token_address?: string;
+  asset_code?: string;
+}
+
+interface StellarIncomingBody {
+  txHash: string;
+  from?: string;
+  to?: string;
+  amount: string;
+  asset: string;
+  tokenIssuer?: string;
+  timestamp?: string;
+  walletLabel?: string;
+  memo?: string;
 }

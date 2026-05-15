@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { SepayWebhookPayload } from '../models/types';
 import { handleSepayWebhook as processSepayWebhook } from '../services/sepayService';
-import { handleChainEvent } from '../services/orderService';
+import { processSellPayment } from '../services/orderService';
 import { createErrorReply } from '../middlewares/errorHandler';
 
 export async function handleSepayWebhook(
@@ -34,18 +34,44 @@ export async function handleChainWebhook(
 ): Promise<void> {
   const { order_key, tx_hash, amount, address, chain_id, token_address, asset_code } = req.body;
 
-  const result = await handleChainEvent({
-    paymentCode: order_key,
+  const result = await processSellPayment({
     txHash: tx_hash,
+    from: address,
     amount,
-    address,
-    chainId: chain_id,
-    tokenAddress: token_address,
-    assetCode: asset_code,
+    asset: asset_code || 'USDC',
+    tokenIssuer: token_address,
+    memo: order_key,
   });
 
   if (!result.success) {
     return createErrorReply(reply, 'CHAIN_EVENT_MISMATCH', result.error || 'Chain event validation failed', req.id);
+  }
+
+  return reply.send({ success: true });
+}
+
+interface StellarIncomingBody {
+  txHash: string;
+  from?: string;
+  to?: string;
+  amount: string;
+  asset: string;
+  tokenIssuer?: string;
+  timestamp?: string;
+  walletLabel?: string;
+  memo?: string;
+}
+
+export async function handleStellarIncoming(
+  req: FastifyRequest<{ Body: StellarIncomingBody }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const { txHash, from, amount, asset, tokenIssuer, memo } = req.body;
+
+  const result = await processSellPayment({ txHash, from, amount, asset, tokenIssuer, memo });
+
+  if (!result.success) {
+    return createErrorReply(reply, 'CHAIN_EVENT_MISMATCH', result.error || 'Processing failed', req.id);
   }
 
   return reply.send({ success: true });
