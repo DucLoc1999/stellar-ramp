@@ -20,6 +20,15 @@ export const OrderState = {
   CANCELLED: 5,
 } as const;
 
+export const ProcessingState = {
+  SELL_CREATED: 10,
+  SELL_PAYMENT_RECEIVED: 12,
+  SELL_PAYOUT_COMPLETED: 13,
+  SELL_PAYOUT_FAILED: 14,
+  BUY_DISBURSE_COMPLETED: 14,
+  BUY_DISBURSE_FAILED: 15,
+} as const;
+
 export interface DepositRequest {
   amount: string;
   chain_id: number;
