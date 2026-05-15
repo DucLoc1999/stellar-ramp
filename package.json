@@ -4,6 +4,9 @@
   "type": "commonjs",
   "description": "Price engine, fee management and SePay integration",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=v22.22.3"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",

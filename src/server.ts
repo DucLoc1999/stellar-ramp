@@ -4,9 +4,11 @@ import { logger } from './config/logger';
 import { appConfig } from './config/app';
 import { initStellarServer, loadHotWallet, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE } from './services/stellarService';
 import { initKafka, disconnectKafka } from './services/queueService';
+import { startSnapshotScheduler } from './services/snapshotLandingPageScheduler';
 import db from './db';
 
 let app: ReturnType<typeof buildApp> extends Promise<infer T> ? T : never;
+let snapshotInterval: NodeJS.Timeout | undefined;
 
 async function healthCheck() {
   try {
@@ -43,6 +45,7 @@ async function gracefulShutdown(signal: string) {
   logger.info(`Received ${signal}, shutting down gracefully...`);
   try {
     await disconnectKafka();
+    if (snapshotInterval) clearInterval(snapshotInterval);
     await db.destroy();
     if (app && app.close) {
       await app.close();
@@ -70,6 +73,7 @@ async function start() {
   const host = appConfig.host;
 
   await app.listen({ port, host });
+  snapshotInterval = startSnapshotScheduler();
 }
 
 start();

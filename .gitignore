@@ -13,6 +13,9 @@ node_modules/
 # logs
 logs/
 
+# sqlite
+p2p_prices.db
+
 # agent
 .claude/
 skills-lock.json
