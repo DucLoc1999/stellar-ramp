@@ -1,4 +1,5 @@
 import { PayOS } from '@payos/node';
+import { getBinById } from '../config/banks';
 
 export interface PayoutRequest {
   orderId: number;
@@ -37,13 +38,16 @@ export async function executePayout(req: PayoutRequest, forceStub = false): Prom
 
   const payOS = getPayOS();
   try {
+    const bin = getBinById(Number(req.bankId)) || req.bankId;
+    console.log(`[PayoutService] PAYOS payout: bin=${bin}, account=${req.bankAccountNo}, amount=${req.amount} VND`);
     const payout = await payOS.payouts.create({
       referenceId: `payout_${req.orderId}_${Date.now()}`,
       amount: req.amount,
       description: req.description || `Withdrawal ${req.orderId}`,
-      toBin: req.bankId,
+      toBin: bin,
       toAccountNumber: req.bankAccountNo,
-    });
+      toAccountName: req.bankAccountName,
+    } as any);
     console.log(`[PayoutService] PAYOS payout created: ${payout.id} for order ${req.orderId}, approvalState: ${payout.approvalState}`);
     return { success: true, transactionId: payout.id };
   } catch (err) {
