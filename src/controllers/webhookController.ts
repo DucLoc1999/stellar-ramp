@@ -38,6 +38,11 @@ export async function handleStellarIncoming(
 
   const result = await processSellPayment({ txHash, from, amount, asset, tokenIssuer, memo });
 
+  const ignoreCodes = ['MEMO_INVALID_FORMAT', 'ORDER_NOT_FOUND', 'ORDER_ALREADY_COMPLETED', 'ORDER_NOT_ELIGIBLE', 'INSUFFICIENT_AMOUNT'];
+  if (!result.success && ignoreCodes.includes(result.error || '')) {
+    return reply.send({ success: true, ignored: true });
+  }
+
   if (!result.success) {
     return createErrorReply(reply, 'CHAIN_EVENT_MISMATCH', result.error || 'Processing failed', req.id);
   }

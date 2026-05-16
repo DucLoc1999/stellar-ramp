@@ -159,7 +159,12 @@ async function processTransaction(
       const assetCode = assetType === 'native' ? 'XLM' : (op.asset_code || '');
       const tokenIssuer = assetType === 'native' ? '' : (op.asset_issuer || '');
 
-      console.log(`[StellarListener] ⚡ Payment: ${op.amount} ${assetCode} from ${op.from.slice(0, 8)}... (type: ${assetType})`);
+      if (assetType === 'native') {
+        console.log(`[StellarListener] ⚡ XLM received: ${op.amount} from ${op.from.slice(0, 8)}... — logging only, XLM not processed`);
+        continue;
+      }
+
+      console.log(`[StellarListener] ⚡ Payment: ${op.amount} ${assetCode} from ${op.from.slice(0, 8)}... memo='${tx.memo || ''}' (type: ${assetType})`);
 
       const isMonitored = monitoredAssets.some(
         (a) =>

@@ -411,6 +411,10 @@ export async function updateOrderState(paymentCode: string, newState: number | s
   }
 }
 
+function isPaymentCodeFormat(memo: string): boolean {
+  return /^DH[A-Z0-9]{10}$/.test(memo);
+}
+
 export async function processSellPayment(params: {
   txHash: string;
   from?: string;
@@ -421,53 +425,49 @@ export async function processSellPayment(params: {
 }): Promise<{ success: boolean; error?: string }> {
   const { txHash, from, amount, asset, tokenIssuer, memo } = params;
 
-  let order: OrderRow | undefined;
-
-  if (memo) {
-    order = await db('orders')
-      .where({ payment_code: memo, direction: 'sell', order_state: OrderState.CREATED })
-      .first();
+  if (!memo || !isPaymentCodeFormat(memo)) {
+    console.log(`[OrderService] ⏭ Ignoring: memo='${memo || ''}' (invalid format or empty)`);
+    return { success: false, error: 'MEMO_INVALID_FORMAT' };
   }
 
-  if (!order) {
-    const webhookAmount = parseFloat(amount);
-    const allSellOrders = await db('orders')
-      .where({ direction: 'sell', order_state: OrderState.CREATED })
-      .orderBy('created_at', 'asc');
-    for (const o of allSellOrders) {
-      const orderAmount = typeof o.usdt_amount === 'string' ? parseFloat(o.usdt_amount) : o.usdt_amount;
-      const diff = Math.abs(webhookAmount - orderAmount) / orderAmount;
-      if (diff <= 0.01) {
-        order = o as OrderRow;
-        break;
-      }
-    }
+  const orderByCode = await db('orders')
+    .where({ payment_code: memo, direction: 'sell' })
+    .first();
+
+  if (!orderByCode) {
+    console.log(`[OrderService] ⏭ Ignoring: no order found with payment_code=${memo}`);
+    return { success: false, error: 'ORDER_NOT_FOUND' };
   }
 
-  if (!order) {
-    return { success: false, error: 'Order not found' };
+  if (orderByCode.order_state === OrderState.COMPLETED) {
+    console.log(`[OrderService] ⏭ Ignoring: order ${memo} already COMPLETED`);
+    return { success: false, error: 'ORDER_ALREADY_COMPLETED' };
   }
 
-  const orderAssetCode = (order.asset_code || '').toUpperCase();
+  if (orderByCode.order_state !== OrderState.CREATED) {
+    console.log(`[OrderService] ⏭ Ignoring: order ${memo} state=${orderByCode.order_state} not CREATED`);
+    return { success: false, error: 'ORDER_NOT_ELIGIBLE' };
+  }
+
+  const orderAssetCode = (orderByCode.asset_code || '').toUpperCase();
   if (asset.toUpperCase() !== orderAssetCode) {
     return { success: false, error: 'Asset code mismatch' };
   }
 
-  if (tokenIssuer && order.token_address && tokenIssuer !== order.token_address) {
+  if (tokenIssuer && orderByCode.token_address && tokenIssuer !== orderByCode.token_address) {
     return { success: false, error: 'Token issuer mismatch' };
   }
 
-  const orderUsdtAmount = typeof order.usdt_amount === 'string'
-    ? parseFloat(order.usdt_amount)
-    : order.usdt_amount;
+  const orderUsdtAmount = typeof orderByCode.usdt_amount === 'string'
+    ? parseFloat(orderByCode.usdt_amount)
+    : orderByCode.usdt_amount;
   const webhookAmount = parseFloat(amount);
-  const tolerance = 0.01;
-  const percentDiff = Math.abs(webhookAmount - orderUsdtAmount) / orderUsdtAmount;
-
-  if (percentDiff > tolerance) {
-    return { success: false, error: 'Amount mismatch' };
+  if (webhookAmount < orderUsdtAmount) {
+    console.log(`[OrderService] ⏭ Ignoring: received ${webhookAmount}, order needs ${orderUsdtAmount}`);
+    return { success: false, error: 'INSUFFICIENT_AMOUNT' };
   }
 
+  const order = orderByCode;
   const oldState = order.order_state || 0;
   const oldProcessingState = order.processing_state || 0;
 
