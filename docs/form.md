@@ -40,7 +40,7 @@ https://qr.sepay.vn/img?acc={ACCOUNT_NUMBER}&bank={BANK_NAME}&amount={AMOUNT}&de
 #### Example
 
 ```
-https://qr.sepay.vn/img?acc=0010000000355&bank=Vietcombank&amount=100000&des=DH12345
+https://qr.sepay.vn/img?acc=0010000000355&bank=Vietcombank&amount=100000&des=DHA1B2C3D4E5
 ```
 
 <Image src="/images/user-guide/qr-1.png" alt="Payment QR Code" caption="Sample payment QR Code" />
@@ -65,10 +65,10 @@ Below is a guide to create a simple payment form: display order info, QR image, 
 
 #### How It Works
 
-1. Customer places an order → system creates an order with a unique **payment code** (e.g., `DH12345`)
+1. Customer places an order → system creates an order with a unique **payment code** (e.g., `DHA1B2C3D4E5`)
 2. Payment page displays a QR Code containing the payment code in the transfer description
 3. Customer scans QR → makes the transfer
-4. SePay detects the transaction → sends webhook to your server with `code = "DH12345"`
+4. SePay detects the transaction → sends webhook to your server with `code = "DHA1B2C3D4E5"`
 5. Server updates the order to **Paid**
 6. Payment page auto-updates to show **Payment Successful** (via polling or WebSocket)
 

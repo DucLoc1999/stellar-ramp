@@ -69,7 +69,7 @@ export interface Usdt247Order {
   updated_at: Usdt247Timestamp;
   client_ip: string;
   outcome: string;
-  original_rate: number;
+  net_vnd: number;
   total_fee_vnd: number;
   transaction_hash?: string | null;
 }

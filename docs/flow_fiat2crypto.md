@@ -9,7 +9,7 @@ sequenceDiagram
     Backend->>Backend: Calculate Price & Fee
     
     Note over Backend: New Step: Order Record
-    Backend->>Backend: Create Order (Status: PENDING, Content: "DH12345")
+    Backend->>Backend: Create Order (Status: PENDING, Content: "DHA1B2C3D4E5")
     
     Backend-->>User: Return QR Code + Content ("DH12345")
     

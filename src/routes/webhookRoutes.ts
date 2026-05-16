@@ -1,14 +1,13 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { sepayAuth } from '../middlewares/sepayAuth';
-import { chainWebhookAuth } from '../middlewares/chainWebhookAuth';
+import { stellarAuth } from '../middlewares/stellarAuth';
 import type { SepayWebhookPayload } from '../models/types';
 import { handleSepayWebhook } from '../controllers/webhookController';
-import { handleChainWebhook, handleStellarIncoming } from '../controllers/webhookController';
+import { handleStellarIncoming } from '../controllers/webhookController';
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', sepayAuth);
-
   app.post<{ Body: SepayWebhookPayload }>('/sepay', {
+    preHandler: sepayAuth,
     schema: {
       tags: ['Webhooks'],
       summary: 'SePay bank transaction webhook — receives deposit notifications',
@@ -39,37 +38,8 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     },
   }, (req, reply) => handleSepayWebhook(req, reply, app));
 
-  app.post<{ Body: ChainWebhookBody }>('/chain', {
-    preHandler: chainWebhookAuth,
-    schema: {
-      tags: ['Webhooks'],
-      summary: 'Chain webhook — receives external chain events (USDC received at hot wallet)',
-      body: {
-        type: 'object',
-        required: ['order_key', 'tx_hash', 'amount', 'address', 'chain_id'],
-        properties: {
-          order_key: { type: 'string', description: 'Payment code (e.g. USD247-XXXXXXXX)' },
-          tx_hash: { type: 'string', description: 'Stellar transaction hash' },
-          amount: { type: 'string', description: 'USDC amount received' },
-          address: { type: 'string', description: 'Destination address (hot wallet)' },
-          chain_id: { type: 'integer', description: 'Chain ID (56=BSC, 20=TRC20, 1=ERC20)' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: { success: { type: 'boolean' } },
-        },
-        400: {
-          type: 'object',
-          properties: { success: { type: 'boolean' }, error: { type: 'object' } },
-        },
-      },
-    },
-  }, handleChainWebhook);
-
   app.post<{ Body: StellarIncomingBody }>('/stellar-incoming', {
-    preHandler: sepayAuth,
+    preHandler: stellarAuth,
     schema: {
       tags: ['Webhooks'],
       summary: 'Stellar incoming webhook — fallback when Kafka unavailable',
@@ -94,16 +64,6 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleStellarIncoming);
-}
-
-interface ChainWebhookBody {
-  order_key: string;
-  tx_hash: string;
-  amount: string;
-  address: string;
-  chain_id: number;
-  token_address?: string;
-  asset_code?: string;
 }
 
 interface StellarIncomingBody {

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import db from '../db';
 import { getQuote } from './priceService';
 import { createSepayOrder } from './sepayPgService';
@@ -88,11 +89,9 @@ async function toApiOrder(
     }
   }
 
-  const spreadBuy = await getConfigNumber('spread_buy', 50);
-  const spreadSell = await getConfigNumber('spread_sell', 50);
-  const originalRate = order.direction === 'buy' ? rate - spreadBuy : rate + spreadSell;
-
   const assetCode = (order.asset_code || 'USDC').toUpperCase();
+
+  const netVnd = typeof order.net_vnd === 'string' ? Number(order.net_vnd) : order.net_vnd;
 
   return {
     id: String(order.id),
@@ -128,7 +127,7 @@ async function toApiOrder(
     updated_at: toTimestamp(order.updated_at),
     client_ip: overrides?.client_ip ?? '',
     outcome: overrides?.outcome ?? '',
-    original_rate: originalRate,
+    net_vnd: netVnd,
     total_fee_vnd: feeVnd,
     transaction_hash: order.transaction_hash,
   };
@@ -139,9 +138,10 @@ export async function formatOrderResponse(order: OrderRow): Promise<Usdt247Order
 }
 
 function generatePaymentCode(): string {
-  const chars = '0123456789';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const bytes = crypto.randomBytes(10);
   let code = 'DH';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 10; i++) code += chars[bytes[i] % 36];
   return code;
 }
 
@@ -329,11 +329,11 @@ export async function createWithdrawal(
   const order = firstRow<OrderRow>(inserted as OrderRow | OrderRow[]);
   fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
 
-  const hotWallet = await loadHotWallet();
+  const walletAddress = process.env.WALLET_ADDRESS || 'GB22V5ZPZWKNK5OPMKG7DRBTI6ZTFYFFRZMA5ABBVB7WG3MORGM4J6VI';
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
-    pay_data: { address: hotWallet.publicKey },
+    pay_data: { address: walletAddress },
   });
 }
 

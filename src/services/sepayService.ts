@@ -18,7 +18,7 @@ export interface SepayWebhookPayload {
 }
 
 function extractCodeFromContent(content: string): string | null {
-  const match = content.match(/DH\d{6,10}/);
+  const match = content.match(/DH[A-Z0-9]{10}/);
   return match ? match[0] : null;
 }
 

@@ -152,7 +152,7 @@ Partner-App-Key: <your-partner-key>
   "data": {
     "id": "199",
     "order_type": "buy",
-    "code": "DH123456",
+    "code": "DHA1B2C3D4E5",
     "provider": "sepay",
     "amount": 10,
     "currency": "XLM",
@@ -169,7 +169,7 @@ Partner-App-Key: <your-partner-key>
         "bankName": "Ngân hàng TMCP Quân đội",
         "bankAccountName": "PHUNG VAN THIEN",
         "bankAccountNumber": "VQRQAITNX0144",
-        "transferContent": "DH123456",
+        "transferContent": "DHA1B2C3D4E5",
         "vaAmount": 49900
       }
     },
@@ -250,7 +250,7 @@ Partner-App-Key: <your-partner-key>
   "data": {
     "id": "200",
     "order_type": "sell",
-    "code": "DH789012",
+    "code": "DHZ9Y8X7W6V",
     "provider": "chain",
     "amount": 10,
     "currency": "XLM",
@@ -273,7 +273,7 @@ Partner-App-Key: <your-partner-key>
 }
 ```
 
-**Important:** After creating a withdrawal order, the client must send the crypto to `pay_data.address` with the **payment code as the Stellar memo**. Example: send 10 XLM to `Ghotwallet...` with memo `DH789012`.
+**Important:** After creating a withdrawal order, the client must send the crypto to `pay_data.address` with the **payment code as the Stellar memo**. Example: send 10 XLM to `Ghotwallet...` with memo `DHZ9Y8X7W6V`.
 
 ---
 
@@ -295,7 +295,7 @@ Partner-App-Key: <your-partner-key>
   "data": {
     "id": "199",
     "order_type": "buy",
-    "code": "DH123456",
+    "code": "DHA1B2C3D4E5",
     "amount": 10,
     "currency": "XLM",
     "state": 1,
@@ -337,7 +337,7 @@ Partner-App-Key: <your-partner-key>
 {
   "success": true,
   "data": {
-    "payment_code": "DH123456",
+    "payment_code": "DHA1B2C3D4E5",
     "order_state": 5,
     "cancelled_at": "2026-05-11T02:30:00.000Z"
   }
@@ -380,8 +380,8 @@ Content-Type: application/json
   "gateway": "MBBank",
   "transactionDate": "2026-05-11T02:30:00",
   "accountNumber": "VQRQAITNX0144",
-  "code": "DH123456",
-  "content": "DH123456",
+  "code": "DHA1B2C3D4E5",
+  "content": "DHA1B2C3D4E5",
   "transferType": "in",
   "transferAmount": 49900,
   "accumulated": 49900,
@@ -425,7 +425,7 @@ Content-Type: application/json
   "tokenIssuer": "",
   "timestamp": "2026-05-11T02:30:00Z",
   "walletLabel": "hot_wallet_1",
-  "memo": "DH789012"
+  "memo": "DHZ9Y8X7W6V"
 }
 ```
 
@@ -454,7 +454,7 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "order_key": "DH789012",
+  "order_key": "DHZ9Y8X7W6V",
   "tx_hash": "abc123...",
   "amount": "10.00",
   "address": "GABC123...YZ",

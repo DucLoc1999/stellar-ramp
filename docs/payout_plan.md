@@ -141,7 +141,7 @@ stellar_token_in → VndPayoutWorker → orderService.processSellPayment()
   "tokenIssuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
   "timestamp": "...",
   "walletLabel": "hot_wallet_1",
-  "memo": "DH123456"
+  "memo": "DHA1B2C3D4E5"
 }
 ```
 

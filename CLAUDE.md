@@ -85,7 +85,7 @@ Service signs callbacks with `X-Timestamp` + `X-Signature` (HMAC-SHA256). Client
 1. Client → `POST /api/orders/deposit` with `{ amount, chain_id, token_address, recipient, callback }`
 2. `orderService.createDeposit()` → `priceService.getQuote('buy')` → `binanceService` + `configService`
 3. Order saved to DB with `payment_status: 'pending'`, `order_state: 1 (CREATED)`. Callback fired (with retry + signature).
-4. Client receives payment_code (e.g., `USDC247-A3F8B2C1`), checkout URL / QR code / bank info
+4. Client receives payment_code (e.g., `DHA1B2C3D4E5`), checkout URL / QR code / bank info
 5. User transfers VND to SePay bank with content = `payment_code`
 6. SePay → `POST /api/webhooks/sepay` → `sepayService.handleSepayWebhook()` matches `code`, validates amount
 7. `orderService.confirmPayment()` → updates to `payment_received`, `order_state: 2 (PROCESSING)`, emits `DISBURSE_CRYPTO` to Kafka
@@ -228,7 +228,7 @@ All via `import 'dotenv/config'`. See `.env.example`:
 
 ## Payment Code
 
-`USDC247-<8-char>` — unique order identifier. Used as SePay transfer description.
+`DH<10-alphanum>` (e.g., `DHA1B2C3D4E5`) — unique order identifier. Used as SePay transfer description.
 
 ## tsconfig
 
