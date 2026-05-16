@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { buildApp, runMigrations, cleanOrders, destroyDb, db } from './helper';
 import type { FastifyInstance } from 'fastify';
 import { Keypair } from '@stellar/stellar-sdk';
-import { encrypt } from '../src/services/encryptionService';
+
 
 const DEPOSIT_BODY = {
   amount: '100',
@@ -40,7 +40,7 @@ beforeAll(async () => {
     .insert({
       name: process.env.STELLAR_HOT_WALLET_NAME || 'stellar_hot_wallet',
       public_key: kp.publicKey(),
-      encrypted_secret: encrypt(kp.secret()),
+      encrypted_secret: 'removed',
       network: 'testnet',
       is_active: true,
     })
