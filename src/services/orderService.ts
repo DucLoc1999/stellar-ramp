@@ -3,7 +3,7 @@ import db from '../db';
 import { getQuote } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, loadHotWallet, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
+import { triggerDisburse, hasTrustline } from './stellarService';
 import { getConfigNumber } from './configService';
 import { executePayout } from './payoutService';
 import { emitOrderPaid } from './queueService';
@@ -329,7 +329,7 @@ export async function createWithdrawal(
   const order = firstRow<OrderRow>(inserted as OrderRow | OrderRow[]);
   fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
 
-  const walletAddress = process.env.WALLET_ADDRESS || 'GB22V5ZPZWKNK5OPMKG7DRBTI6ZTFYFFRZMA5ABBVB7WG3MORGM4J6VI';
+  const walletAddress = process.env.WALLET_ADDRESS || '';
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',

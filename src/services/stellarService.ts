@@ -133,16 +133,7 @@ export async function getXlmBalance(publicKey: string, network?: string): Promis
   return nativeBalance ? nativeBalance.balance : '0';
 }
 
-export async function loadHotWallet() {
-  const walletName = process.env.STELLAR_HOT_WALLET_NAME || 'stellar_hot_wallet';
-  const row = await db('system_wallets')
-    .where({ name: walletName, is_active: true })
-    .first();
-  if (!row) {
-    return { publicKey: '', network: 'testnet' };
-  }
-  return { publicKey: row.public_key, network: row.network };
-}
+
 
 export async function initStellarServer(network?: string) {
   return null;

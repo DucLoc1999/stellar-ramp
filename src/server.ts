@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { buildApp } from './app';
 import { logger } from './config/logger';
 import { appConfig } from './config/app';
-import { initStellarServer, loadHotWallet, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE } from './services/stellarService';
+import { initStellarServer, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE } from './services/stellarService';
 import { initKafka, disconnectKafka } from './services/queueService';
 import { startSnapshotScheduler } from './services/snapshotLandingPageScheduler';
 import db from './db';
