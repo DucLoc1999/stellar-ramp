@@ -35,8 +35,9 @@ export const HeroSection = () => {
   const [usdcRates, setUsdcRates] = useState<OurRate | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
-  const [usdcBuyInput, setUsdcBuyInput] = useState("");
-  const [usdcSellInput, setUsdcSellInput] = useState("");
+  const [payInput, setPayInput] = useState("");
+  const [receiveInput, setReceiveInput] = useState("");
+  const [inputSide, setInputSide] = useState<"pay" | "receive">("pay");
   const [progress, setProgress] = useState(100);
   const lastFetchRef = useRef<number>(Date.now());
 
@@ -74,24 +75,58 @@ export const HeroSection = () => {
   const fmt4 = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   const parse = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
-
-  const usdcNum = parse(mode === "buy" ? usdcBuyInput : usdcSellInput);
-
-  // Buy mode: VND input → crypto output
-  const usdcOut = usdcRates && usdcNum > 0
-    ? fmt4(usdcNum / usdcRates.buy)
-    : "";
-
-  // Sell mode: crypto input → VND output
-  const usdcSellOut = usdcRates && usdcNum > 0
-    ? (usdcNum * usdcRates.sell).toLocaleString("vi-VN")
-    : "";
-
-  // Fees: 0.8% of the VND value of each transaction
-  const FEE_RATE = 0.008;
   const fmtVnd = (n: number) => n.toLocaleString("vi-VN");
-  const usdcVnd = mode === "buy" ? usdcNum : usdcNum * (usdcRates?.sell ?? 0);
-  const usdcFee = usdcVnd > 0 ? fmtVnd(Math.round(usdcVnd * FEE_RATE)) : "";
+
+  const feeRateBuy = usdcRates?.fee_rate_buy ?? 0.008;
+  const feeRateSell = usdcRates?.fee_rate_sell ?? 0.008;
+  const minFeeVnd = usdcRates?.min_fee_vnd ?? 0;
+  const feeRate = mode === "buy" ? feeRateBuy : feeRateSell;
+
+  const calcFee = (vnd: number, rate: number) =>
+    vnd > 0 ? Math.max(vnd * rate, minFeeVnd) : 0;
+
+  let displayPay = "";
+  let displayReceive = "";
+  let appliedFee = 0;
+
+  if (usdcRates) {
+    if (inputSide === "pay") {
+      const payNum = parse(payInput);
+      if (payNum > 0) {
+        if (mode === "buy") {
+          appliedFee = calcFee(payNum, feeRateBuy);
+          displayReceive = fmt4((payNum - appliedFee) / usdcRates.buy);
+        } else {
+          const vnd = payNum * usdcRates.sell;
+          appliedFee = calcFee(vnd, feeRateSell);
+          displayReceive = (vnd - appliedFee).toLocaleString("vi-VN");
+        }
+      }
+    } else {
+      const receiveNum = parse(receiveInput);
+      if (receiveNum > 0) {
+        if (mode === "buy") {
+          // reverse: given desired USDC out, find VND to pay
+          const vndCase1 = (receiveNum * usdcRates.buy) / (1 - feeRateBuy);
+          const vndToPay = vndCase1 * feeRateBuy >= minFeeVnd
+            ? vndCase1
+            : receiveNum * usdcRates.buy + minFeeVnd;
+          appliedFee = calcFee(vndToPay, feeRateBuy);
+          displayPay = fmtVnd(Math.round(vndToPay));
+        } else {
+          // reverse: given desired VND out, find USDC to sell
+          const usdcCase1 = receiveNum / (usdcRates.sell * (1 - feeRateSell));
+          const usdcToSell = usdcCase1 * usdcRates.sell * feeRateSell >= minFeeVnd
+            ? usdcCase1
+            : (receiveNum + minFeeVnd) / usdcRates.sell;
+          appliedFee = calcFee(usdcToSell * usdcRates.sell, feeRateSell);
+          displayPay = fmt4(usdcToSell);
+        }
+      }
+    }
+  }
+
+  const usdcFee = appliedFee > 0 ? fmtVnd(Math.round(appliedFee)) : "";
 
   return (
     <section
@@ -200,7 +235,7 @@ export const HeroSection = () => {
                       }`}
                     />
                     <button
-                      onClick={() => setMode("buy")}
+                      onClick={() => { setMode("buy"); setPayInput(""); setReceiveInput(""); setInputSide("pay"); }}
                       className={`relative z-10 px-3 py-1 rounded-full transition-colors ${
                         mode === "buy" ? "text-white" : "text-slate-500"
                       }`}
@@ -208,7 +243,7 @@ export const HeroSection = () => {
                       {t("hero.buy")}
                     </button>
                     <button
-                      onClick={() => setMode("sell")}
+                      onClick={() => { setMode("sell"); setPayInput(""); setReceiveInput(""); setInputSide("pay"); }}
                       className={`relative z-10 px-3 py-1 rounded-full transition-colors ${
                         mode === "sell" ? "text-white" : "text-slate-500"
                       }`}
@@ -232,8 +267,8 @@ export const HeroSection = () => {
                       <input
                         type="text"
                         inputMode="decimal"
-                        value={mode === "buy" ? usdcBuyInput : usdcSellInput}
-                        onChange={(e) => mode === "buy" ? setUsdcBuyInput(e.target.value) : setUsdcSellInput(e.target.value)}
+                        value={inputSide === "pay" ? payInput : displayPay}
+                        onChange={(e) => { setPayInput(e.target.value); setInputSide("pay"); }}
                         placeholder="0"
                         className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent"
                       />
@@ -242,16 +277,22 @@ export const HeroSection = () => {
                       </span>
                     </div>
                     <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
-                      <span className="block px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-400 truncate">
-                        {loading ? "…" : (mode === "buy" ? usdcOut : usdcSellOut) || "0"}
-                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={inputSide === "receive" ? receiveInput : displayReceive}
+                        onChange={(e) => { setReceiveInput(e.target.value); setInputSide("receive"); }}
+                        placeholder={loading ? "…" : "0"}
+                        disabled={loading}
+                        className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent disabled:opacity-50"
+                      />
                       <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
                         {mode === "buy" ? "USDC" : "VND"}
                       </span>
                     </div>
                   </div>
                   <p className="text-xs text-slate-400 dark:text-slate-500 px-1">
-                    {t("hero.fee")}: <span className="font-semibold text-slate-500">{usdcFee || "0"} ₫</span> (0.8%)
+                    {t("hero.fee")}: <span className="font-semibold text-slate-500">{usdcFee || "0"} ₫</span> ({((feeRate) * 100).toFixed(1)}%{minFeeVnd > 0 ? `, min ${fmtVnd(minFeeVnd)} ₫` : ""})
                   </p>
                 </div>
 
