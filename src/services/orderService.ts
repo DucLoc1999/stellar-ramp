@@ -13,6 +13,9 @@ import { OrderState, ProcessingState } from '../models/types';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
+/** Order expiry duration in milliseconds. Defaults to 5 minutes. */
+export const ORDER_EXPIRY_MS = (Number(process.env.ORDER_EXPIRY_MINUTES) || 5) * 60 * 1000;
+
 function isSupportedToken(tokenAddress: string | null | undefined, assetCode: string): boolean {
   const addr = tokenAddress || '';
   if (assetCode.toUpperCase() === 'XLM' && !addr) {
@@ -77,7 +80,7 @@ async function toApiOrder(
 ): Promise<Usdt247Order> {
   const rate = typeof order.rate === 'string' ? Number(order.rate) : order.rate;
   const feeVnd = typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd;
-  const expiry = order.expired_at ?? new Date(order.created_at.getTime() + 30 * 60 * 1000);
+  const expiry = order.expired_at ?? new Date(order.created_at.getTime() + ORDER_EXPIRY_MS);
   let paymentInfo: Usdt247PaymentInfo | null = null;
   if (order.payment_info && typeof order.payment_info === 'object') {
     paymentInfo = order.payment_info as Usdt247PaymentInfo;
@@ -195,6 +198,13 @@ export async function confirmPayment(params: {
 
   if (!order) return;
 
+  // Guard: reject payment on expired orders
+  if (isOrderExpired(order)) {
+    console.log(`[OrderService] ⏭ Rejecting payment for expired order: ${params.payment_code}`);
+    await performCancel(order, 'ORDER_EXPIRED');
+    return;
+  }
+
   await db('orders')
     .where({ payment_code: params.payment_code, payment_status: 'pending' })
     .update({
@@ -256,7 +266,7 @@ export async function createDeposit(
 
   const usdtAmount = Number(req.amount);
   const result = await createBuyOrder(usdtAmount, req.asset_code);
-  const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
+  const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
   const updated = await db('orders')
     .where({ payment_code: result.payment_code })
     .update({
@@ -302,7 +312,7 @@ export async function createWithdrawal(
   const usdtAmount = Number(req.amount);
   const quote = await getQuote('sell', usdtAmount, req.asset_code);
   const payment_code = generatePaymentCode();
-  const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
+  const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
   const inserted = await db('orders')
     .insert({
       payment_code,
@@ -335,6 +345,42 @@ export async function createWithdrawal(
     client_ip: options?.clientIp ?? '',
     pay_data: { address: walletAddress },
   });
+}
+
+/** Check whether an order has passed its expiry time. */
+function isOrderExpired(order: OrderRow): boolean {
+  const expiry = order.expired_at
+    ? new Date(order.expired_at).getTime()
+    : new Date(order.created_at).getTime() + ORDER_EXPIRY_MS;
+  return Date.now() >= expiry;
+}
+
+/**
+ * Auto-cancel all CREATED orders that have passed their expiry time.
+ * Called by the expiry scheduler on a periodic interval.
+ */
+export async function cancelExpiredOrders(): Promise<number> {
+  const now = new Date();
+  const fallbackCutoff = new Date(Date.now() - ORDER_EXPIRY_MS);
+
+  // Orders with explicit expired_at that have passed, OR
+  // orders without expired_at whose created_at + ORDER_EXPIRY_MS has passed
+  const expiredOrders: OrderRow[] = await db('orders')
+    .where('order_state', OrderState.CREATED)
+    .where('payment_status', 'pending')
+    .where(function (this: any) {
+      this.where('expired_at', '<=', now)
+        .orWhere(function (this: any) {
+          this.whereNull('expired_at').andWhere('created_at', '<=', fallbackCutoff);
+        });
+    });
+
+  let cancelled = 0;
+  for (const order of expiredOrders) {
+    const result = await performCancel(order, 'ORDER_EXPIRED');
+    if (result.data) cancelled++;
+  }
+  return cancelled;
 }
 
 interface CancelResult {
@@ -430,6 +476,20 @@ export async function processSellPayment(params: {
     return { success: false, error: 'MEMO_INVALID_FORMAT' };
   }
 
+  // ── Deduplication: check if this txHash was already processed ──
+  const existingLog = await db('webhook_logs').where({ tx_hash: txHash }).first();
+  if (existingLog) {
+    console.log(`[OrderService] ⏭ Ignoring: txHash=${txHash} already processed`);
+    return { success: false, error: 'DUPLICATE_TX' };
+  }
+
+  // Log this webhook immediately to prevent concurrent processing
+  await db('webhook_logs').insert({
+    tx_hash: txHash,
+    source: 'stellar',
+    body: JSON.stringify(params),
+  });
+
   const orderByCode = await db('orders')
     .where({ payment_code: memo, direction: 'sell' })
     .first();
@@ -449,22 +509,46 @@ export async function processSellPayment(params: {
     return { success: false, error: 'ORDER_NOT_ELIGIBLE' };
   }
 
+  // Guard: reject payment on expired orders
+  if (isOrderExpired(orderByCode)) {
+    console.log(`[OrderService] ⏭ Rejecting: order ${memo} is expired`);
+    await performCancel(orderByCode, 'ORDER_EXPIRED');
+    return { success: false, error: 'ORDER_EXPIRED' };
+  }
+
+  // ── Strict asset code + issuer validation ──
   const orderAssetCode = (orderByCode.asset_code || '').toUpperCase();
-  if (asset.toUpperCase() !== orderAssetCode) {
-    return { success: false, error: 'Asset code mismatch' };
+  const incomingAsset = asset.toUpperCase();
+
+  if (incomingAsset !== orderAssetCode) {
+    console.log(`[OrderService] ⏭ Rejecting: asset mismatch — received ${incomingAsset}, order expects ${orderAssetCode}`);
+    return { success: false, error: 'ASSET_CODE_MISMATCH' };
   }
 
-  if (tokenIssuer && orderByCode.token_address && tokenIssuer !== orderByCode.token_address) {
-    return { success: false, error: 'Token issuer mismatch' };
+  if (orderAssetCode === 'XLM') {
+    // XLM is native — tokenIssuer should be empty/undefined
+    if (tokenIssuer && tokenIssuer.trim() !== '') {
+      console.log(`[OrderService] ⏭ Rejecting: XLM order but received non-native asset (issuer=${tokenIssuer})`);
+      return { success: false, error: 'ASSET_ISSUER_MISMATCH' };
+    }
+  } else {
+    // Non-native (USDC etc): issuer must match order's token_address
+    const expectedIssuer = orderByCode.token_address || '';
+    if (!tokenIssuer || tokenIssuer !== expectedIssuer) {
+      console.log(`[OrderService] ⏭ Rejecting: issuer mismatch — received '${tokenIssuer || ''}', expected '${expectedIssuer}'`);
+      return { success: false, error: 'ASSET_ISSUER_MISMATCH' };
+    }
   }
 
+  // ── Exact amount matching ──
   const orderUsdtAmount = typeof orderByCode.usdt_amount === 'string'
     ? parseFloat(orderByCode.usdt_amount)
     : orderByCode.usdt_amount;
   const webhookAmount = parseFloat(amount);
-  if (webhookAmount < orderUsdtAmount) {
-    console.log(`[OrderService] ⏭ Ignoring: received ${webhookAmount}, order needs ${orderUsdtAmount}`);
-    return { success: false, error: 'INSUFFICIENT_AMOUNT' };
+
+  if (webhookAmount !== orderUsdtAmount) {
+    console.log(`[OrderService] ⏭ Rejecting: amount mismatch — received ${webhookAmount}, order expects exactly ${orderUsdtAmount}`);
+    return { success: false, error: 'AMOUNT_MISMATCH' };
   }
 
   const order = orderByCode;

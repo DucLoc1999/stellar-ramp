@@ -167,20 +167,18 @@ async function processTransaction(
       const assetCode = assetType === 'native' ? 'XLM' : (op.asset_code || '');
       const tokenIssuer = assetType === 'native' ? '' : (op.asset_issuer || '');
 
-      if (assetType === 'native') {
-        console.log(`[StellarListener] ⚡ XLM received: ${op.amount} from ${op.from.slice(0, 8)}... — logging only, XLM not processed`);
-        continue;
-      }
-
       console.log(`[StellarListener] ⚡ Payment: ${op.amount} ${assetCode} from ${op.from.slice(0, 8)}... memo='${tx.memo || ''}' (type: ${assetType})`);
 
+      // For native XLM: always forward if there's a valid memo (sell order)
+      // For non-native: check against monitored assets list
+      const isNativeWithMemo = assetType === 'native' && tx.memo && tx.memo.trim() !== '';
       const isMonitored = monitoredAssets.some(
         (a) =>
           (a.isNative() && assetType === 'native') ||
           (!a.isNative() && a.code === assetCode && a.issuer === tokenIssuer)
       );
 
-      if (!isMonitored) {
+      if (!isMonitored && !isNativeWithMemo) {
         console.log(`[StellarListener] ⏭ Skipped (not monitored): ${assetCode} (issuer: ${tokenIssuer || 'native'})`);
         continue;
       }

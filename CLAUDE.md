@@ -216,6 +216,7 @@ All via `import 'dotenv/config'`. See `.env.example`:
 | `CALLBACK_RETRY_COUNT` | Callback retry attempts (default 3) |
 | `CALLBACK_RETRY_DELAY_MS` | Callback retry delay (default 5000) |
 | `CALLBACK_SIGNATURE_SECRET` | HMAC secret for callback signing |
+| `ORDER_EXPIRY_MINUTES` | Order expiration time in minutes (default: 5) |
 | `CHAIN_WEBHOOK_SECRET` | HMAC secret for chain webhook |
 | `KAFKA_BROKERS` | Kafka address:port |
 | `KAFKA_CLIENT_ID` | Kafka client ID |

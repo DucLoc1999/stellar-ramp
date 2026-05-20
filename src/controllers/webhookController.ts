@@ -38,7 +38,11 @@ export async function handleStellarIncoming(
 
   const result = await processSellPayment({ txHash, from, amount, asset, tokenIssuer, memo });
 
-  const ignoreCodes = ['MEMO_INVALID_FORMAT', 'ORDER_NOT_FOUND', 'ORDER_ALREADY_COMPLETED', 'ORDER_NOT_ELIGIBLE', 'INSUFFICIENT_AMOUNT'];
+  const ignoreCodes = [
+    'MEMO_INVALID_FORMAT', 'ORDER_NOT_FOUND', 'ORDER_ALREADY_COMPLETED',
+    'ORDER_NOT_ELIGIBLE', 'AMOUNT_MISMATCH', 'DUPLICATE_TX',
+    'ASSET_CODE_MISMATCH', 'ASSET_ISSUER_MISMATCH', 'ORDER_EXPIRED',
+  ];
   if (!result.success && ignoreCodes.includes(result.error || '')) {
     return reply.send({ success: true, ignored: true });
   }

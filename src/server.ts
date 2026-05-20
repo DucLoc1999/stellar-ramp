@@ -5,10 +5,12 @@ import { appConfig } from './config/app';
 import { initStellarServer } from './services/stellarService';
 import { initKafka, disconnectKafka } from './services/queueService';
 import { startSnapshotScheduler } from './services/snapshotLandingPageScheduler';
+import { startOrderExpiryScheduler } from './services/orderExpiryScheduler';
 import db from './db';
 
 let app: ReturnType<typeof buildApp> extends Promise<infer T> ? T : never;
 let snapshotInterval: NodeJS.Timeout | undefined;
+let expiryInterval: NodeJS.Timeout | undefined;
 
 async function healthCheck() {
   try {
@@ -29,6 +31,7 @@ async function gracefulShutdown(signal: string) {
   try {
     await disconnectKafka();
     if (snapshotInterval) clearInterval(snapshotInterval);
+    if (expiryInterval) clearInterval(expiryInterval);
     await db.destroy();
     if (app && app.close) {
       await app.close();
@@ -57,6 +60,7 @@ async function start() {
 
   await app.listen({ port, host });
   snapshotInterval = startSnapshotScheduler();
+  expiryInterval = startOrderExpiryScheduler();
 }
 
 start();

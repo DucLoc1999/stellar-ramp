@@ -35,6 +35,7 @@ export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<
 
     await trx('webhook_logs').insert({
       sepay_transaction_id: payload.id,
+      source: 'sepay',
       body: JSON.stringify(payload),
     });
     const paymentCode = payload.code ?? extractCodeFromContent(payload.content);
@@ -49,7 +50,7 @@ export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<
     }
 
     const currentState = order.order_state || 0;
-    if (currentState >= OrderState.COMPLETED || currentState === OrderState.CANCELLED) {
+    if (currentState === OrderState.COMPLETED || currentState === OrderState.CANCELLED) {
       console.log('[sepay-webhook] order already in final state:', currentState, 'for order:', paymentCode);
       return;
     }
