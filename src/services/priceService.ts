@@ -1,5 +1,5 @@
 import { getBinancePrices } from './binanceService';
-import { getConfigNumber } from './configService';
+import { getTokenConfig } from './configService';
 
 export interface RateResult {
   buy_price: number;
@@ -28,22 +28,13 @@ export interface QuoteResult {
 
 const DEFAULT_ASSET = 'USDC';
 
-async function getAssetConfig(asset: string, key: string, fallback: number): Promise<number> {
-  const assetKey = asset.toUpperCase();
-  if (assetKey !== DEFAULT_ASSET) {
-    const assetSpecific = await getConfigNumber(`${key}_${assetKey}`, -1);
-    if (assetSpecific >= 0) return assetSpecific;
-  }
-  return getConfigNumber(key, fallback);
-}
-
 export async function getRate(asset: string = DEFAULT_ASSET): Promise<RateResult> {
   const [prices, spreadBuy, spreadSell, feeRateBuy, feeRateSell] = await Promise.all([
     getBinancePrices(asset),
-    getAssetConfig(asset, 'spread_buy', 50),
-    getAssetConfig(asset, 'spread_sell', 50),
-    getAssetConfig(asset, 'fee_rate_buy', 0.0008),
-    getAssetConfig(asset, 'fee_rate_sell', 0.0008),
+    getTokenConfig(asset, 'buy', 'spread'),
+    getTokenConfig(asset, 'sell', 'spread'),
+    getTokenConfig(asset, 'buy', 'fee_rate'),
+    getTokenConfig(asset, 'sell', 'fee_rate'),
   ]);
 
   const binance_mid = Math.round((prices.buy + prices.sell) / 2);
@@ -61,10 +52,15 @@ export async function getRate(asset: string = DEFAULT_ASSET): Promise<RateResult
   };
 }
 
-export const MIN_FEE_VND = parseInt(process.env.MIN_FEE_VND || '5000', 10);
+export const DEFAULT_MIN_FEE_VND = 5000;
+
+export async function getMinFee(asset: string = DEFAULT_ASSET): Promise<number> {
+  return getTokenConfig(asset, 'buy', 'min_fee');
+}
 
 export async function getQuote(direction: 'buy' | 'sell', usdt_amount: number, asset: string = DEFAULT_ASSET): Promise<QuoteResult> {
   const rate = await getRate(asset);
+  const [minFee] = await Promise.all([getMinFee(asset)]);
 
   const price = direction === 'buy' ? rate.buy_price : rate.sell_price;
   const original_rate = direction === 'buy' ? rate.buy_price - rate.spread_buy : rate.sell_price + rate.spread_sell;
@@ -72,7 +68,7 @@ export async function getQuote(direction: 'buy' | 'sell', usdt_amount: number, a
   const fee_rate = direction === 'buy' ? rate.fee_rate_buy : rate.fee_rate_sell;
   const gross_vnd = Math.round(usdt_amount * price);
   const calculatedFee = Math.round(gross_vnd * fee_rate);
-  const fee_vnd = Math.max(calculatedFee, MIN_FEE_VND);
+  const fee_vnd = Math.max(calculatedFee, minFee);
   const net_vnd = direction === 'buy' ? gross_vnd + fee_vnd : gross_vnd - fee_vnd;
 
   const assetCode = asset.toUpperCase();

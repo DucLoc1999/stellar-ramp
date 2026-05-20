@@ -6,6 +6,7 @@ import { initStellarServer } from './services/stellarService';
 import { initKafka, disconnectKafka } from './services/queueService';
 import { startSnapshotScheduler } from './services/snapshotLandingPageScheduler';
 import { startOrderExpiryScheduler } from './services/orderExpiryScheduler';
+import { refresh as refreshConfig } from './services/configService';
 import db from './db';
 
 let app: ReturnType<typeof buildApp> extends Promise<infer T> ? T : never;
@@ -45,6 +46,7 @@ async function gracefulShutdown(signal: string) {
 }
 
 async function start() {
+  await refreshConfig();
   await healthCheck();
   await checkKafkaConnection();
   // await checkHotWalletTrustline();

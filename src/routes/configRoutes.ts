@@ -6,7 +6,7 @@ export async function configRoutes(app: FastifyInstance): Promise<void> {
   app.get('/fees', {
     schema: {
       tags: ['Config'],
-      summary: 'Get current spreads and fee rates',
+      summary: 'Get current spreads and fee rates (global + token-specific)',
     },
   }, handleGetFees);
 
@@ -14,7 +14,7 @@ export async function configRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['Config'],
-      summary: 'Update spreads and fee rates (admin)',
+      summary: 'Update spreads and fee rates (admin, global + token-specific)',
       security: [{ BearerAuth: [] }],
       body: {
         type: 'object',
@@ -24,6 +24,16 @@ export async function configRoutes(app: FastifyInstance): Promise<void> {
           spread_sell: { type: 'number' },
           fee_rate_buy: { type: 'number' },
           fee_rate_sell: { type: 'number' },
+          usdc_spread_buy: { type: 'number' },
+          usdc_spread_sell: { type: 'number' },
+          usdc_fee_rate_buy: { type: 'number' },
+          usdc_fee_rate_sell: { type: 'number' },
+          xlm_spread_buy: { type: 'number' },
+          xlm_spread_sell: { type: 'number' },
+          xlm_fee_rate_buy: { type: 'number' },
+          xlm_fee_rate_sell: { type: 'number' },
+          usdc_min_fee: { type: 'number' },
+          xlm_min_fee: { type: 'number' },
         },
       },
     },

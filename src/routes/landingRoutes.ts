@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getLatestPrice, getHistory, type Exchange } from '../services/snapshotLandingPageDb';
-import { getRate, MIN_FEE_VND } from '../services/priceService';
+import { getRate, getMinFee } from '../services/priceService';
 
 async function handleAllRates(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const exchanges: Exchange[] = ['binance', 'okx', 'bybit'];
@@ -13,12 +13,13 @@ async function handleAllRates(_request: FastifyRequest, reply: FastifyReply): Pr
   }
 
   const rate = await getRate('USDC');
+  const minFee = await getMinFee('USDC');
   const our = {
     buy: rate.buy_price,
     sell: rate.sell_price,
     fee_rate_buy: rate.fee_rate_buy,
     fee_rate_sell: rate.fee_rate_sell,
-    min_fee_vnd: MIN_FEE_VND,
+    min_fee_vnd: minFee,
     created_at: rate.updated_at,
   };
 
