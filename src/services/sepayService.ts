@@ -33,18 +33,20 @@ export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<
     console.log('[sepay-webhook] existing:', existing);
     if (existing) return;
 
-    await trx('webhook_logs').insert({
+    const [insertedWebhookLog] = await trx('webhook_logs').insert({
       sepay_transaction_id: payload.id,
       source: 'sepay',
       body: JSON.stringify(payload),
-    });
+    }).returning('id');
+    const webhookLogId = Number((insertedWebhookLog as any).id ?? insertedWebhookLog);
+
     const paymentCode = payload.code ?? extractCodeFromContent(payload.content);
     if (!paymentCode) return;
 
     const order = await trx('orders').where({ payment_code: paymentCode }).first();
     if (!order) return;
 
-    if (order.last_webhook_id && String(order.last_webhook_id) === String(payload.id)) {
+    if (order.last_webhook_id && Number(order.last_webhook_id) === webhookLogId) {
       console.log('[sepay-webhook] duplicate webhook for order:', paymentCode);
       return;
     }
@@ -65,7 +67,7 @@ export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<
 
     await trx('orders')
       .where({ payment_code: paymentCode })
-      .update({ last_webhook_id: String(payload.id) });
+      .update({ last_webhook_id: String(webhookLogId) });
 
     await confirmPayment({
       payment_code: paymentCode,

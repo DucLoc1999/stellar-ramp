@@ -2,6 +2,13 @@ import db from '../db';
 
 type ConfigKey = string;
 
+export interface TokenSideConfig {
+  spread: number;
+  fee_rate: number;
+  min_fee: number;
+  min_order_amount: number;
+}
+
 const cache = new Map<ConfigKey, string>();
 let cacheLoaded = false;
 
@@ -100,45 +107,94 @@ export function invalidateCache(): void {
 }
 
 export type TokenSide = 'buy' | 'sell';
-export type TokenKind = 'spread' | 'fee_rate' | 'min_fee';
+export type TokenKind = 'spread' | 'fee_rate' | 'min_fee' | 'min_order_amount';
+
+const DEFAULT_TOKEN_CONFIG: TokenSideConfig = {
+  spread: 50,
+  fee_rate: 0.008,
+  min_fee: 5000,
+  min_order_amount: 1,
+};
+
+const SUPPORTED_TOKENS = ['USDC', 'XLM'];
+
+export async function getTokenSideConfigFromDb(token: string, side: TokenSide): Promise<TokenSideConfig | null> {
+  const key = `${token.toUpperCase()}_${side}`;
+  const raw = await getConfig(key);
+  if (raw === undefined) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      spread: Number(parsed.spread) || DEFAULT_TOKEN_CONFIG.spread,
+      fee_rate: Number(parsed.fee_rate) || DEFAULT_TOKEN_CONFIG.fee_rate,
+      min_fee: Number(parsed.min_fee) || DEFAULT_TOKEN_CONFIG.min_fee,
+      min_order_amount: Number(parsed.min_order_amount) || DEFAULT_TOKEN_CONFIG.min_order_amount,
+    };
+  } catch {
+    console.warn(`[ConfigService] Failed to parse token config for key="${key}" raw="${raw}"`);
+    return null;
+  }
+}
+
+export async function getAllTokenConfigs(): Promise<Record<string, Record<string, TokenSideConfig>>> {
+  const results: Record<string, Record<string, TokenSideConfig>> = {};
+  await load();
+  for (const token of SUPPORTED_TOKENS) {
+    results[token] = {};
+    for (const side of ['buy', 'sell'] as TokenSide[]) {
+      const cfg = await getTokenSideConfigFromDb(token, side);
+      results[token][side] = cfg ?? { ...DEFAULT_TOKEN_CONFIG };
+    }
+  }
+  return results;
+}
+
+export async function upsertTokenConfig(
+  token: string,
+  side: TokenSide,
+  partial: Partial<TokenSideConfig>,
+  changedBy = 'admin',
+): Promise<void> {
+  const existing = await getTokenSideConfigFromDb(token, side);
+  const merged: TokenSideConfig = existing ?? { ...DEFAULT_TOKEN_CONFIG };
+  Object.assign(merged, partial);
+
+  const key = `${token.toUpperCase()}_${side}`;
+  const value = JSON.stringify(merged);
+
+  const old = cache.get(key);
+  await db('config')
+    .insert({ key, value })
+    .onConflict('key')
+    .merge({ value });
+  cache.set(key, value);
+
+  await db('fee_audit_log').insert({
+    config_key: key,
+    old_value: old ?? null,
+    new_value: value,
+    changed_by: changedBy,
+  });
+}
+
+async function getGlobalFallback(side: TokenSide, kind: TokenKind): Promise<number> {
+  const globalDefaults: Record<TokenKind, Record<TokenSide, number>> = {
+    spread: { buy: 50, sell: 50 },
+    fee_rate: { buy: 0.008, sell: 0.008 },
+    min_fee: { buy: 5000, sell: 5000 },
+    min_order_amount: { buy: 1, sell: 1 },
+  };
+  return globalDefaults[kind]?.[side] ?? 50;
+}
 
 export async function getTokenConfig(
   token: string,
   side: TokenSide,
   kind: TokenKind,
 ): Promise<number> {
-  const t = token.toLowerCase();
-  const keyMap: Record<string, string> = {
-    'spread_buy': `${t}_spread_buy`,
-    'spread_sell': `${t}_spread_sell`,
-    'fee_rate_buy': `${t}_fee_rate_buy`,
-    'fee_rate_sell': `${t}_fee_rate_sell`,
-    'min_fee': `${t}_min_fee`,
-  };
-  const sideKind = `${kind}_${side}` as const;
-  const key = keyMap[sideKind];
-  if (!key) throw new Error(`Invalid token config: ${token} ${side} ${kind}`);
-
-  const tokenSpecific = await getConfig(key);
-  if (tokenSpecific !== undefined) {
-    const parsed = Number(tokenSpecific);
-    if (!isNaN(parsed)) return parsed;
+  const tokenConfig = await getTokenSideConfigFromDb(token, side);
+  if (tokenConfig !== null) {
+    return tokenConfig[kind];
   }
-
-  const globalKeyMap: Record<string, string> = {
-    'spread_buy': 'spread_buy',
-    'spread_sell': 'spread_sell',
-    'fee_rate_buy': 'fee_rate_buy',
-    'fee_rate_sell': 'fee_rate_sell',
-    'min_fee': 'min_fee_vnd',
-  };
-  const globalKey = globalKeyMap[sideKind];
-  const defaultMap: Record<string, number> = {
-    'spread_buy': 50,
-    'spread_sell': 50,
-    'fee_rate_buy': 0.008,
-    'fee_rate_sell': 0.008,
-    'min_fee': 5000,
-  };
-  return getConfigNumber(globalKey, defaultMap[globalKey] ?? 50);
+  return getGlobalFallback(side, kind);
 }

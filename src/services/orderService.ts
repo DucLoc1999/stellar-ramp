@@ -484,11 +484,12 @@ export async function processSellPayment(params: {
   }
 
   // Log this webhook immediately to prevent concurrent processing
-  await db('webhook_logs').insert({
+  const [insertedWebhookLog] = await db('webhook_logs').insert({
     tx_hash: txHash,
     source: 'stellar',
     body: JSON.stringify(params),
-  });
+  }).returning('id');
+  const webhookLogId = Number((insertedWebhookLog as any).id ?? insertedWebhookLog);
 
   const orderByCode = await db('orders')
     .where({ payment_code: memo, direction: 'sell' })
@@ -562,6 +563,7 @@ export async function processSellPayment(params: {
       order_state: OrderState.PROCESSING,
       processing_state: ProcessingState.SELL_PAYMENT_RECEIVED,
       transaction_hash: txHash,
+      last_webhook_id: String(webhookLogId),
     });
 
   if (order.callback) {
@@ -665,12 +667,20 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     return { error: 'PAYMENT_ALREADY_RECEIVED' };
   }
 
+  const sepay_transaction_id = `bypass-${Date.now()}`;
+  const [insertedWebhookLog] = await db('webhook_logs').insert({
+    sepay_transaction_id,
+    source: 'admin-bypass',
+    body: JSON.stringify({ bypass: true, orderId, sepay_transaction_id }),
+  }).returning('id');
+  const webhookLogId = Number((insertedWebhookLog as any).id ?? insertedWebhookLog);
   try {
     await confirmPayment({
       payment_code: paymentCode,
-      sepay_transaction_id: `bypass-${Date.now()}`,
+      sepay_transaction_id,
       vnd_received: Number(order.net_vnd),
     });
+    await db('orders').where({ id: orderId }).update({ last_webhook_id: String(webhookLogId) });
     return { success: true };
   } catch (err) {
     console.error(`[Bypass] confirmPayment failed for order ${orderId}:`, err);
