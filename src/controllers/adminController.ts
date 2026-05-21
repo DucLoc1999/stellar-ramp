@@ -151,4 +151,3 @@ export async function handleRotateCallbackSecret(
 
   return reply.send({ success: true, data: { rotated_at: now.toISOString() } });
 }
-
