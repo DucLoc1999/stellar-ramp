@@ -1,7 +1,6 @@
 import type { PriceSourceResult } from './index';
 
 const BINANCE_P2P_URL = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
-const CACHE_TTL_MS = 5_000;
 
 export interface BinanceP2POptions {
   asset: string;
@@ -11,6 +10,15 @@ export interface BinanceP2POptions {
   merchantCheck?: boolean;
   publisherType?: string | null;
   transAmount?: string;
+}
+
+export interface BinanceSourceConfig {
+  rows?: number;
+  fiat?: string;
+  merchantCheck?: boolean;
+  publisherType?: string | null;
+  transAmount?: string;
+  cache_ttl_ms?: number;
 }
 
 export async function fetchBinanceP2POffers(opts: BinanceP2POptions): Promise<number[]> {
@@ -54,19 +62,28 @@ const FALLBACK_PRICES: Record<string, number> = {
   XLM: 7500,
 };
 
-export async function binanceSource(asset: string): Promise<PriceSourceResult> {
+export async function binanceSource(asset: string, config: Record<string, unknown>): Promise<PriceSourceResult> {
+  const cfg = config as BinanceSourceConfig;
+  const cacheTtl = cfg.cache_ttl_ms ?? 5_000;
   const now = Date.now();
   const cacheKey = asset.toUpperCase();
 
   const cached = priceCache.get(cacheKey);
-  if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
+  if (cached && now - cached.fetchedAt < cacheTtl) {
     return { ...cached, cached: true };
   }
 
   try {
+    const opts: Omit<BinanceP2POptions, 'tradeType' | 'asset'> = {
+      fiat: cfg.fiat,
+      rows: cfg.rows,
+      merchantCheck: cfg.merchantCheck,
+      publisherType: cfg.publisherType,
+      transAmount: cfg.transAmount,
+    };
     const [buyPrices, sellPrices] = await Promise.all([
-      fetchBinanceP2POffers({ asset, tradeType: 'BUY' }),
-      fetchBinanceP2POffers({ asset, tradeType: 'SELL' }),
+      fetchBinanceP2POffers({ ...opts, asset, tradeType: 'BUY' }),
+      fetchBinanceP2POffers({ ...opts, asset, tradeType: 'SELL' }),
     ]);
     const buy = buyPrices[Math.floor(buyPrices.length / 2)];
     const sell = sellPrices[Math.floor(sellPrices.length / 2)];

@@ -8,7 +8,7 @@ export interface PriceSourceResult {
   cached: boolean;
 }
 
-export type PriceSourceFn = (asset: string) => Promise<PriceSourceResult>;
+export type PriceSourceFn = (asset: string, config: Record<string, unknown>) => Promise<PriceSourceResult>;
 
 const registry: Record<string, PriceSourceFn> = {
   binance: binanceSource,
@@ -27,7 +27,18 @@ async function getSourceName(): Promise<string> {
   return 'binance';
 }
 
+async function getSourceConfig(source: string): Promise<Record<string, unknown>> {
+  const raw = await getConfig(`rate_${source}_source`);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 export async function getPrices(asset: string): Promise<PriceSourceResult> {
   const source = await getSourceName();
-  return registry[source](asset);
+  const config = await getSourceConfig(source);
+  return registry[source](asset, config);
 }
