@@ -96,6 +96,7 @@ async function setupTestTables() {
     t.string('cancelled_at');
     t.string('cancel_reason', 500);
     t.text('api_data');
+    t.string('last_webhook_id', 100);
     // Withdrawal-specific fields
     t.string('bank_id', 50);
     t.string('bank_account_name', 100);
