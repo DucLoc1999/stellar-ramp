@@ -9,7 +9,7 @@ const DEPOSIT_BODY = {
   chain_id: 56,
   asset_code: 'USDC',
   token_address: '0x55d398326f99059fF775485246999027B3197955',
-  recipient: '',
+  recipient: 'GDZST3XVCDTUJ76ZAV2HA72KYPJM7L7J4JZ5L6G6UFVPJKZ6JCZXM5CM',
   callback: 'https://example.com/webhook',
 };
 
@@ -75,7 +75,7 @@ describe('POST /api/orders/deposit', () => {
     const body = res.json();
     expect(body.success).toBe(true);
     expect(body.data.order_type).toBe('buy');
-    expect(body.data.code).toMatch(/^USDC247-[A-Z0-9]{8}$/);
+    expect(body.data.code).toMatch(/^DH[A-Z0-9]{10}$/);
     expect(body.data.state).toBe(1);
     expect(body.data.amount).toBe(100);
     expect(body.data.recipient).toBe(DEPOSIT_BODY.recipient);
@@ -97,7 +97,7 @@ describe('POST /api/orders/deposit', () => {
     expect(data.body.bankInfo).toBeDefined();
   });
 
-  it('returns canonical USDC247 monetary fields', async () => {
+  it('returns canonical monetary fields', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/orders/deposit',
@@ -191,7 +191,7 @@ describe('POST /api/orders/withdrawal', () => {
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
     expect(data.order_type).toBe('sell');
-    expect(data.code).toMatch(/^USDC247-[A-Z0-9]{8}$/);
+    expect(data.code).toMatch(/^DH[A-Z0-9]{10}$/);
     expect(data.state).toBe(1);
     expect(data.amount).toBe(50);
   });
@@ -279,7 +279,7 @@ describe('GET /api/orders/:payment_code', () => {
   it('returns 404 for nonexistent code', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/orders/USDC247-ZZZZZZZZ',
+      url: '/api/orders/DHZZZZZZZZZZ',
       headers: PARTNER_HEADERS,
     });
 

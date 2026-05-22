@@ -34,6 +34,7 @@ export async function runMigrations() {
 
 export async function cleanOrders() {
   await db('webhook_logs').del();
+  await db('callback_logs').del();
   await db('orders').del();
 }
 

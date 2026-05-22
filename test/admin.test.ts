@@ -11,6 +11,7 @@ const ADMIN_PASSWORD = 'password123';
 beforeAll(async () => {
   process.env.ADMIN_JWT_SECRET = 'test-secret';
   await runMigrations();
+  await db('admins').where({ email: ADMIN_EMAIL }).del();
   await createAdmin(ADMIN_EMAIL, ADMIN_PASSWORD);
   app = await buildApp();
 });

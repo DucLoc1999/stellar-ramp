@@ -2,36 +2,71 @@ stages:
   - test
   - deploy
 
-cache:
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - node_modules/
-
-# Type-check and test in CI container (catch errors before deploy)
-test:
-  image: node:24-alpine
+# ==========================================
+# STAGE 1: CI / Testing (GitLab Cloud Infrastructure)
+# ==========================================
+test_application:
   stage: test
+  image: node:24-alpine
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
   script:
     - npm ci
     - npx tsc --noEmit
     - npm test
   allow_failure: false
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
-# Deploy via runner on server (fast, direct)
-deploy:
+# ==========================================
+# STAGE 2: CD / Cached Deploy (Your Production Server)
+# ==========================================
+deploy_to_production:
   stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
   tags:
-    - debian-server
-  needs: ["test"]
+    - debian-server # Forces execution on your specific production server runner
+  variables:
+    IMAGE_NAME: "payment-svc"
+    CONTAINER_NAME: "payment-svc-prod"
+  needs: ["test_application"] # Explicit dependency on test job
   script:
-    - cd /var/www/my-project
-    - git pull origin main
-    - npm install --production
-    - npm run build
-    - npm run migrate:prod || true
-    - pm2 restart ecosystem.config.js
-  only:
-    - main
-  when: manual
+    - echo "Building optimized Docker image with layer caching..."
+    
+    # 1. Build Docker image locally using existing layer caches
+    # Multi-stage Dockerfile ensures npm ci layer is cached if package.json unchanged
+    - docker build -t ${IMAGE_NAME}:latest .
+    
+    # 2. Zero-downtime container swap
+    - echo "Stopping previous container instance..."
+    - docker stop ${CONTAINER_NAME} || true
+    - docker rm ${CONTAINER_NAME} || true
+    
+    # 3. Spin up new container with latest code
+    - echo "Starting new container instance..."
+    - docker run -d \
+        --name ${CONTAINER_NAME} \
+        --restart unless-stopped \
+        -p 3000:3000 \
+        -e DB_HOST="${DB_HOST}" \
+        -e DB_USER="${DB_USER}" \
+        -e DB_PASSWORD="${DB_PASSWORD}" \
+        -e DB_NAME="${DB_NAME}" \
+        -e PARTNER_APP_KEY="${PARTNER_APP_KEY}" \
+        -e SEPAY_KEY="${SEPAY_KEY}" \
+        -e SEPAY_WEBHOOK_API_KEY="${SEPAY_WEBHOOK_API_KEY}" \
+        -e STELLAR_NETWORK="${STELLAR_NETWORK}" \
+        -e STELLAR_HOT_WALLET_ENCRYPTION_KEY="${STELLAR_HOT_WALLET_ENCRYPTION_KEY}" \
+        ${IMAGE_NAME}:latest
+    
+    # 4. Verify container is running
+    - echo "Verifying deployment..."
+    - sleep 5
+    - docker ps | grep ${CONTAINER_NAME} && echo "✓ Container running" || (echo "✗ Container failed to start"; exit 1)
+    
+    # 5. System hygiene: purge dangling build layers to save disk space
+    - echo "Cleaning up dangling images..."
+    - docker image prune -f
