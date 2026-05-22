@@ -1,4 +1,4 @@
-import { getConfig } from '../configService';
+import { getConfig, getTokenSideConfigFromDb } from '../configService';
 import { binanceSource } from './binanceSource';
 import { coingeckoSource } from './coingeckoSource';
 
@@ -19,7 +19,27 @@ export function registerPriceSource(name: string, fn: PriceSourceFn): void {
   registry[name] = fn;
 }
 
-async function getSourceName(): Promise<string> {
+async function getTokenSource(asset: string): Promise<string | undefined> {
+  const buyConfig = await getTokenSideConfigFromDb(asset, 'buy');
+  if (buyConfig?.source && registry[buyConfig.source]) return buyConfig.source;
+
+  const sellConfig = await getTokenSideConfigFromDb(asset, 'sell');
+  if (sellConfig?.source && registry[sellConfig.source]) return sellConfig.source;
+
+  const configuredSource = buyConfig?.source ?? sellConfig?.source;
+  if (configuredSource) {
+    console.warn('[PriceSources] Unsupported token source "' + configuredSource + '" for asset="' + asset + '", falling back to global source');
+  }
+
+  return undefined;
+}
+
+async function getSourceName(asset?: string): Promise<string> {
+  if (asset) {
+    const tokenSource = await getTokenSource(asset);
+    if (tokenSource) return tokenSource;
+  }
+
   const dbVal = await getConfig('price_source');
   if (dbVal && registry[dbVal]) return dbVal;
   const envVal = process.env.PRICE_SOURCE;
@@ -28,7 +48,7 @@ async function getSourceName(): Promise<string> {
 }
 
 async function getSourceConfig(source: string): Promise<Record<string, unknown>> {
-  const raw = await getConfig(`rate_${source}_source`);
+  const raw = await getConfig('rate_' + source + '_source');
   if (!raw) return {};
   try {
     return JSON.parse(raw);
@@ -38,7 +58,11 @@ async function getSourceConfig(source: string): Promise<Record<string, unknown>>
 }
 
 export async function getPrices(asset: string): Promise<PriceSourceResult> {
-  const source = await getSourceName();
+  const source = await getSourceName(asset);
   const config = await getSourceConfig(source);
-  return registry[source](asset, config);
+  const fn = registry[source];
+  if (!fn) {
+    throw new Error('Unsupported price source: ' + source);
+  }
+  return fn(asset, config);
 }

@@ -7,6 +7,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 const DEPOSIT_BODY = {
   amount: '100',
   chain_id: 56,
+  asset_code: 'USDC',
   token_address: '0x55d398326f99059fF775485246999027B3197955',
   recipient: '',
   callback: 'https://example.com/webhook',
@@ -15,6 +16,7 @@ const DEPOSIT_BODY = {
 const WITHDRAWAL_BODY = {
   amount: '50',
   chain_id: 56,
+  asset_code: 'USDC',
   token_address: '0x55d398326f99059fF775485246999027B3197955',
   callback: 'https://example.com/webhook',
   payment_info: {

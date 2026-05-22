@@ -20,12 +20,16 @@ export async function handleGetFees(
       usdc_fee_rate_sell: usdcSell?.fee_rate ?? 0.008,
       usdc_min_fee: usdcBuy?.min_fee ?? 5000,
       usdc_min_order_amount: usdcBuy?.min_order_amount ?? 1,
+      usdc_source_buy: usdcBuy?.source,
+      usdc_source_sell: usdcSell?.source,
       xlm_spread_buy: xlmBuy?.spread ?? 50,
       xlm_spread_sell: xlmSell?.spread ?? 50,
       xlm_fee_rate_buy: xlmBuy?.fee_rate ?? 0.008,
       xlm_fee_rate_sell: xlmSell?.fee_rate ?? 0.008,
       xlm_min_fee: xlmBuy?.min_fee ?? 5000,
       xlm_min_order_amount: xlmBuy?.min_order_amount ?? 1,
+      xlm_source_buy: xlmBuy?.source,
+      xlm_source_sell: xlmSell?.source,
     },
   });
 }
@@ -35,6 +39,7 @@ interface TokenSidePatch {
   fee_rate?: number;
   min_fee?: number;
   min_order_amount?: number;
+  source?: string;
 }
 
 interface PatchBody {
@@ -86,12 +91,16 @@ export async function handlePatchConfig(
       usdc_fee_rate_sell: usdcSell?.fee_rate ?? 0.008,
       usdc_min_fee: usdcBuy?.min_fee ?? 5000,
       usdc_min_order_amount: usdcBuy?.min_order_amount ?? 1,
+      usdc_source_buy: usdcBuy?.source,
+      usdc_source_sell: usdcSell?.source,
       xlm_spread_buy: xlmBuy?.spread ?? 50,
       xlm_spread_sell: xlmSell?.spread ?? 50,
       xlm_fee_rate_buy: xlmBuy?.fee_rate ?? 0.008,
       xlm_fee_rate_sell: xlmSell?.fee_rate ?? 0.008,
       xlm_min_fee: xlmBuy?.min_fee ?? 5000,
       xlm_min_order_amount: xlmBuy?.min_order_amount ?? 1,
+      xlm_source_buy: xlmBuy?.source,
+      xlm_source_sell: xlmSell?.source,
     },
   });
 }

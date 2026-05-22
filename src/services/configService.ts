@@ -7,6 +7,7 @@ export interface TokenSideConfig {
   fee_rate: number;
   min_fee: number;
   min_order_amount: number;
+  source?: string;
 }
 
 const cache = new Map<ConfigKey, string>();
@@ -123,12 +124,14 @@ export async function getTokenSideConfigFromDb(token: string, side: TokenSide): 
   const raw = await getConfig(key);
   if (raw === undefined) return null;
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Partial<TokenSideConfig> & { source?: unknown };
+    const source = typeof parsed.source === 'string' ? parsed.source.trim().toLowerCase() : undefined;
     return {
       spread: Number(parsed.spread) || DEFAULT_TOKEN_CONFIG.spread,
       fee_rate: Number(parsed.fee_rate) || DEFAULT_TOKEN_CONFIG.fee_rate,
       min_fee: Number(parsed.min_fee) || DEFAULT_TOKEN_CONFIG.min_fee,
       min_order_amount: Number(parsed.min_order_amount) || DEFAULT_TOKEN_CONFIG.min_order_amount,
+      source,
     };
   } catch {
     console.warn(`[ConfigService] Failed to parse token config for key="${key}" raw="${raw}"`);

@@ -2,6 +2,11 @@ stages:
   - test
   - deploy
 
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
 # Type-check and test in CI container (catch errors before deploy)
 test:
   image: node:24-alpine
@@ -9,7 +14,8 @@ test:
   script:
     - npm ci
     - npx tsc --noEmit
-    - npm test || true
+    - npm test
+  allow_failure: false
   only:
     - main
 
@@ -18,6 +24,7 @@ deploy:
   stage: deploy
   tags:
     - debian-server
+  needs: ["test"]
   script:
     - cd /var/www/my-project
     - git pull origin main

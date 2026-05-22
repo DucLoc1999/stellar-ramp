@@ -2,6 +2,18 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { handleGetFees, handlePatchConfig } from '../controllers/configController';
 import { adminAuth } from '../middlewares/adminAuth';
 
+const tokenSideConfigSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    spread: { type: 'number' },
+    fee_rate: { type: 'number' },
+    min_fee: { type: 'number' },
+    min_order_amount: { type: 'number' },
+    source: { type: 'string' },
+  },
+} as const;
+
 export async function configRoutes(app: FastifyInstance): Promise<void> {
   app.get('/fees', {
     schema: {
@@ -34,6 +46,10 @@ export async function configRoutes(app: FastifyInstance): Promise<void> {
           xlm_fee_rate_sell: { type: 'number' },
           usdc_min_fee: { type: 'number' },
           xlm_min_fee: { type: 'number' },
+          USDC_buy: tokenSideConfigSchema,
+          USDC_sell: tokenSideConfigSchema,
+          XLM_buy: tokenSideConfigSchema,
+          XLM_sell: tokenSideConfigSchema,
         },
       },
     },
