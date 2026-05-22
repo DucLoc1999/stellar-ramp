@@ -2,7 +2,7 @@
 .env
 .env.local
 .env.prod
-ecosystem.config.js
+# ecosystem.config.js
 # .yaml
 
 # build output
@@ -22,5 +22,11 @@ p2p_prices.db
 skills-lock.json
 .agent/
 .agents/
+
+# Exceptions: allow CI/CD and deployment docs/scripts
+!docs/CICD_SETUP.md
+!scripts/setup-cicd-vars.sh
+
+# General ignore
 docs/
 scripts/
