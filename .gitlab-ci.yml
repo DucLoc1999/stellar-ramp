@@ -1,140 +1,30 @@
 stages:
-  - install
   - test
-  - build
-  - package
   - deploy
 
-variables:
-  NODE_ENV: "production"
-
-# Install dependencies
-install:
-  stage: install
+# Type-check and test in CI container (catch errors before deploy)
+test:
   image: node:24-alpine
-  cache:
-    paths:
-      - node_modules/
+  stage: test
   script:
     - npm ci
-  artifacts:
-    paths:
-      - node_modules/
-    expire_in: 1 hour
-
-# Type check and lint
-lint:
-  stage: test
-  image: node:24-alpine
-  dependencies:
-    - install
-  script:
     - npx tsc --noEmit
-    - echo "✓ Type check passed"
-
-# Run tests (if available)
-test:
-  stage: test
-  image: node:24-alpine
-  dependencies:
-    - install
-  script:
-    - npm test || echo "No tests configured"
-  allow_failure: true
-
-# Build TypeScript
-build:
-  stage: build
-  image: node:24-alpine
-  dependencies:
-    - install
-  script:
-    - npm run build
-  artifacts:
-    paths:
-      - dist/
-    expire_in: 1 hour
-
-# Package artifacts for deployment
-package:
-  stage: package
-  image: node:24-alpine
-  dependencies:
-    - build
-  script:
-    - tar --exclude='.git' --exclude='node_modules' --exclude='.env*' -czf artifact.tar.gz dist/ package.json package-lock.json ecosystem.config.js docker-entrypoint.sh
-  artifacts:
-    paths:
-      - artifact.tar.gz
-    expire_in: 1 day
-
-# Deploy to production (protected branch only)
-deploy:production:
-  stage: deploy
-  image: alpine:latest
-  dependencies:
-    - package
-  before_script:
-    - apk add --no-cache openssh-client rsync
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts 2>/dev/null || true
-  script:
-    - export RELEASE_NAME="$CI_COMMIT_SHORT_SHA-$(date +%s)"
-    - export REMOTE_RELEASE_DIR="$REMOTE_APP_DIR/releases/$RELEASE_NAME"
-    - echo "Deploying release: $RELEASE_NAME"
-    
-    # Create release directory
-    - ssh -p ${DEPLOY_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "mkdir -p $REMOTE_RELEASE_DIR"
-    
-    # Upload artifact
-    - rsync -avz --delete -e "ssh -p ${DEPLOY_PORT:-22}" artifact.tar.gz $DEPLOY_USER@$DEPLOY_HOST:$REMOTE_RELEASE_DIR/
-    
-    # Extract and setup on remote
-    - ssh -p ${DEPLOY_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "
-        cd $REMOTE_RELEASE_DIR &&
-        tar -xzf artifact.tar.gz &&
-        npm ci --omit=dev &&
-        echo 'Release extracted and dependencies installed'
-      "
-    
-    # Run migrations if DB variables are set
-    - |
-      if [ -n "$DB_HOST" ] && [ -n "$DB_USER" ] && [ -n "$DB_NAME" ]; then
-        ssh -p ${DEPLOY_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "
-          cd $REMOTE_RELEASE_DIR &&
-          DB_HOST=$DB_HOST DB_PORT=${DB_PORT:-5432} DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD DB_NAME=$DB_NAME DB_SCHEMA=${DB_SCHEMA:-payment_svc} \
-          node node_modules/.bin/knex migrate:latest --knexfile dist/knexfile.js &&
-          echo 'Database migrations completed'
-        "
-      fi
-    
-    # Update current symlink
-    - ssh -p ${DEPLOY_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "
-        ln -sfn $REMOTE_RELEASE_DIR $REMOTE_APP_DIR/current &&
-        echo 'Current symlink updated'
-      "
-    
-    # Reload PM2
-    - ssh -p ${DEPLOY_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "
-        cd $REMOTE_APP_DIR/current &&
-        pm2 startOrReload ecosystem.config.js --env production &&
-        pm2 save &&
-        echo 'PM2 reloaded'
-      "
-    
-    # Cleanup old releases (keep last 5)
-    - ssh -p ${DEPLOY_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "
-        cd $REMOTE_APP_DIR/releases &&
-        ls -1t | tail -n +6 | xargs -r rm -rf &&
-        echo 'Old releases cleaned up'
-      "
-  environment:
-    name: production
-    url: https://$DEPLOY_HOST
+    - npm test || true
   only:
     - main
-    - tags
+
+# Deploy via runner on server (fast, direct)
+deploy:
+  stage: deploy
+  tags:
+    - debian-server
+  script:
+    - cd /var/www/my-project
+    - git pull origin main
+    - npm install --production
+    - npm run build
+    - npm run migrate:prod || true
+    - pm2 restart ecosystem.config.js
+  only:
+    - main
   when: manual

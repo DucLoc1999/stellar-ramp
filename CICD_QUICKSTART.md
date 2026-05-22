@@ -1,149 +1,189 @@
-# CI/CD Quick Start (5 Minutes)
+# CI/CD Quick Start (Hybrid - Simplified)
 
 ## What's Included
 
-- `.gitlab-ci.yml` — Full pipeline: build → test → deploy
-- `docs/CICD_SETUP.md` — Complete setup guide
-- `scripts/setup-cicd-vars.sh` — Variable checklist
+- `.gitlab-ci.yml` — 2 stages: test (in CI) + deploy (on server)
+- `CICD_OPTIONS.md` — Comparison of all approaches
+- `docs/CICD_SETUP.md` — Full setup guide (still valid)
 
-## TL;DR Setup
+## How It Works
 
-### 1. Generate SSH Key (Local Machine)
+```
+git push origin main
+  ↓ (automatic - in GitLab CI container)
+[test] npm ci + tsc + tests
+  ↓ (pass/fail shown in GitLab UI)
+[deploy] Manual trigger when ready
+  ↓ (runs on your debian-server runner)
+git pull origin main
+npm install --production
+npm run build
+npm run migrate:prod (optional)
+pm2 restart ecosystem.config.js
+  ↓
+Done! (4 min total)
+```
+
+## Setup (Simple!)
+
+### 1. Register GitLab Runner on Your Server
 ```bash
-ssh-keygen -t ed25519 -f /tmp/deploy_key -N ""
-cat /tmp/deploy_key          # Private key content
-cat /tmp/deploy_key.pub      # Public key content
+# On your debian-server (as root or sudo)
+curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | bash
+sudo apt-get install gitlab-runner
+
+# Register runner
+sudo gitlab-runner register \
+  --url https://gitlab.com/ \
+  --registration-token YOUR_REGISTRATION_TOKEN \
+  --executor shell \
+  --tag-list debian-server \
+  --description "Debian Server Runner"
 ```
 
-### 2. Add Public Key to Server
+(Get `YOUR_REGISTRATION_TOKEN` from: GitLab Project → Settings → CI/CD → Runners)
+
+### 2. Install Node & PM2 on Server
 ```bash
-ssh deploy@YOUR_SERVER_IP
-mkdir -p ~/.ssh
-echo "PASTE_PUBLIC_KEY_CONTENT_HERE" >> ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-```
-
-### 3. Set GitLab CI Variables
-Go to: **GitLab Project → Settings → CI/CD → Variables**
-
-Add these variables (mark ones with 🔒 as Protected):
-
-```
-SSH_PRIVATE_KEY          🔒  (paste contents of /tmp/deploy_key)
-DEPLOY_USER                   deploy
-DEPLOY_HOST                   34.124.179.109  (your server IP)
-DEPLOY_PORT                   22
-REMOTE_APP_DIR                /srv/usdt247-payment
-DB_HOST                  🔒  34.124.179.109
-DB_PORT                       5432
-DB_USER                  🔒  postgres
-DB_PASSWORD              🔒  Admin_123
-DB_NAME                  🔒  orbitlab
-DB_SCHEMA                     payment_svc
-```
-
-### 4. Prepare Server (Run Once)
-```bash
-# SSH into server as root or with sudo
-ssh root@YOUR_SERVER_IP
-
-# Install Node & PM2
+# On your debian-server
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y nodejs rsync openssh-server
 npm install -g pm2
-pm2 startup
-pm2 save
-
-# Create deploy directory
-mkdir -p /srv/usdt247-payment/{releases,logs}
-useradd -m -s /bin/bash deploy  # if not exists
-chown -R deploy:deploy /srv/usdt247-payment
-chmod 755 /srv/usdt247-payment
 ```
 
-### 5. Test SSH from CI
+### 3. Setup Your Project Directory
 ```bash
-# Push code to test the pipeline
-git add .gitlab-ci.yml docs/CICD_SETUP.md scripts/setup-cicd-vars.sh
-git commit -m "ci: add gitlab ci/cd pipeline"
+# On your debian-server
+mkdir -p /var/www/my-project
+cd /var/www/my-project
+git clone https://YOUR_GITLAB_URL/project.git .
+npm install --production
+npm run build
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+### 4. Update `.gitlab-ci.yml` Variables (if needed)
+The current `.gitlab-ci.yml` assumes:
+- Runner tag: `debian-server` ✓
+- Project dir: `/var/www/my-project` ← Update if different
+- PM2 app name: `ecosystem.config.js` ✓
+
+If your paths differ, edit `.gitlab-ci.yml` line 21:
+```yaml
+script:
+  - cd /YOUR/ACTUAL/PATH/here  # ← Change this
+```
+
+## Deploy Workflow
+
+### First Deploy
+1. Push code: `git push origin main`
+2. Go to **GitLab Project → CI/CD → Pipelines**
+3. Wait for `test` job to pass (2-3 min)
+4. Click **Play** (▶️) on `deploy` job
+5. Watch logs in real-time
+6. Done!
+
+### Subsequent Deploys
+```bash
+# Just push, wait for tests, then click deploy
+git push origin main
+# Wait 2 min for tests...
+# Manual click in GitLab UI
+```
+
+## If Deploy Fails
+
+**Option 1: Fix and retry**
+```bash
+git commit -m "fix: issue"
+git push origin main
+# Wait for test to pass, then retry deploy
+```
+
+**Option 2: Rollback**
+```bash
+# On your server
+ssh ubuntu@YOUR_SERVER_IP
+cd /var/www/my-project
+
+# Check git history
+git log --oneline -5
+
+# Revert to previous
+git revert <commit-hash>
 git push origin main
 
-# Go to GitLab Project → CI/CD → Pipelines
-# Wait for build/test/package to complete
-# Manually trigger deploy:production job
+# Deploy again
 ```
 
-## Pipeline Flow
-
-```
-push to main/tag
-    ↓
-[install] npm ci
-    ↓
-[test]    tsc --noEmit, npm test
-    ↓
-[build]   npm run build
-    ↓
-[package] tar dist/ + config
-    ↓
-[deploy]  (manual trigger)
-    ├─ SSH to server
-    ├─ Extract artifact
-    ├─ npm ci --omit=dev
-    ├─ Run DB migrations
-    ├─ Reload PM2
-    └─ Cleanup old releases
+**Option 3: Manual PM2 restart**
+```bash
+# On your server
+ssh ubuntu@YOUR_SERVER_IP
+pm2 restart ecosystem.config.js
+pm2 status
+pm2 logs usdt247-payment -n 50
 ```
 
 ## Verify Deployment
 
 ```bash
 # Check on server
-ssh deploy@YOUR_SERVER_IP
+ssh ubuntu@YOUR_SERVER_IP
 pm2 status
-pm2 logs usdt247-payment -n 50
+pm2 logs usdt247-payment -n 20
 
-# Health check from outside
+# Health check
 curl http://YOUR_SERVER_IP:3000/health
 ```
 
-## Rollback (if needed)
+## Environment Variables
+
+If your app needs `.env` file, create it on the server:
 
 ```bash
-ssh deploy@YOUR_SERVER_IP
+ssh ubuntu@YOUR_SERVER_IP
+cat > /var/www/my-project/.env << 'EOF'
+NODE_ENV=production
+PORT=3000
+DB_HOST=...
+DB_USER=...
+DB_PASSWORD=...
+SEPAY_KEY=...
+EOF
 
-# List releases
-ls -1 /srv/usdt247-payment/releases/
-
-# Switch to previous
-ln -sfn /srv/usdt247-payment/releases/OLD_RELEASE_NAME /srv/usdt247-payment/current
-
-# Reload PM2
-cd /srv/usdt247-payment/current && pm2 startOrReload ecosystem.config.js --env production
+chmod 600 /var/www/my-project/.env
+pm2 restart ecosystem.config.js
 ```
 
-## Common Issues
+## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| SSH connection fails | Check `SSH_PRIVATE_KEY` matches public key on server. Run `ssh-keyscan -H $SERVER >> ~/.ssh/known_hosts` |
-| Migrations fail | Ensure `DB_*` variables are correct. Test: `PGPASSWORD=... psql -h $HOST -U $USER -d $DB -c "SELECT 1"` |
-| PM2 won't start | Check `/srv/usdt247-payment/current/ecosystem.config.js` exists. Run `pm2 start ecosystem.config.js --env production` manually |
-| Permission denied | Ensure `deploy` user owns `/srv/usdt247-payment`. Check SSH key permissions: `chmod 600 ~/.ssh/id_rsa` |
+| Runner not found | Check runner is registered: `gitlab-runner list` on server |
+| Build fails with `tsc` errors | Fix TypeScript errors, push again |
+| Deploy hangs on `git pull` | SSH to server, check if git is stuck: `ps aux \| grep git` |
+| PM2 won't restart | Check logs: `pm2 logs`, ensure `ecosystem.config.js` exists |
+| Permission denied | Check gitlab-runner user has access to `/var/www/my-project` |
+| Node not found | Verify Node installed: `which node` on server |
 
-## Next: Full Documentation
+## Comparison: Why Hybrid?
 
-See `docs/CICD_SETUP.md` for:
-- Detailed server setup
-- Environment variable options
-- Manual deployment steps
-- Security best practices
-- Troubleshooting guide
+| Aspect | Hybrid (Current) | Simple | Full Multi-Stage |
+|--------|------------------|--------|------------------|
+| CI checks | ✅ tsc, tests | ❌ None | ✅ Full pipeline |
+| Deploy speed | ⚡ 3-4 min | ⚡⚡ 2-3 min | ⚡ 5 min (artifacts) |
+| Error detection | Before deploy ✅ | At runtime ❌ | Before deploy ✅ |
+| Rollback | Git revert | Git revert | Instant symlink |
+| Complexity | ⭐⭐ Low | ⭐ Super low | ⭐⭐⭐⭐ High |
+| **Best for?** | **Your case ✅** | Hobby only | Enterprise only |
 
-## Support
+For a payment system on your own server = **Hybrid is perfect**.
 
-Run this for a checklist:
-```bash
-bash scripts/setup-cicd-vars.sh
-```
+## See Also
+
+- `CICD_OPTIONS.md` — Full comparison of all approaches
+- `docs/CICD_SETUP.md` — Advanced setup & troubleshooting
 
