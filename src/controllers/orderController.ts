@@ -3,11 +3,31 @@ import {
   createDeposit,
   createWithdrawal,
   getOrderById,
-  cancelOrderById,
+  getOrderByCode,
+  cancelOrder,
   formatOrderResponse,
 } from '../services/orderService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
-import { createErrorReply, ErrorCodes } from '../middlewares/errorHandler';
+import { createErrorReply } from '../middlewares/errorHandler';
+
+async function resolveOrderByParam(id: string) {
+  const trimmed = id.trim();
+  const numeric = Number(trimmed);
+
+  if (Number.isInteger(numeric) && String(numeric) === trimmed) {
+    const byId = await getOrderById(numeric);
+    if (byId) return byId;
+  }
+
+  const byCode = await getOrderByCode(trimmed);
+  if (byCode) return byCode;
+
+  if (Number.isInteger(numeric)) {
+    return await getOrderById(numeric);
+  }
+
+  return null;
+}
 
 export async function handleDeposit(
   req: FastifyRequest<{ Body: DepositRequest }>,
@@ -57,34 +77,32 @@ export async function handleGetOrder(
   req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const orderId = parseInt(req.params.id, 10);
-  if (isNaN(orderId)) {
-    return createErrorReply(reply, 'VALIDATION_ERROR', 'Invalid order ID', req.id);
-  }
-  const order = await getOrderById(orderId);
+  const order = await resolveOrderByParam(req.params.id);
   if (!order) {
     return createErrorReply(reply, 'ORDER_NOT_FOUND', 'Order not found', req.id);
   }
-  return reply.send({ success: true, data: formatOrderResponse(order) });
+  const data = await formatOrderResponse(order);
+  return reply.send({ success: true, data });
 }
 
 export async function handleCancel(
   req: FastifyRequest<{ Params: { id: string }; Body: { reason?: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const orderId = parseInt(req.params.id, 10);
-  if (isNaN(orderId)) {
-    return createErrorReply(reply, 'VALIDATION_ERROR', 'Invalid order ID', req.id);
+  const order = await resolveOrderByParam(req.params.id);
+  if (!order) {
+    return createErrorReply(reply, 'ORDER_NOT_FOUND', 'Order not found', req.id);
   }
-  const result = await cancelOrderById(orderId, req.body?.reason);
-  
+
+  const result = await cancelOrder(order.payment_code, req.body?.reason);
+
   if (result.error) {
-    const errorCode = result.error === 'ORDER_NOT_FOUND' ? 'ORDER_NOT_FOUND' : 
-                      result.error === 'CANCEL_NOT_ALLOWED' ? 'CANCEL_NOT_ALLOWED' : 
+    const errorCode = result.error === 'ORDER_NOT_FOUND' ? 'ORDER_NOT_FOUND' :
+                      result.error === 'CANCEL_NOT_ALLOWED' ? 'CANCEL_NOT_ALLOWED' :
                       'INTERNAL_ERROR';
     return createErrorReply(reply, errorCode, result.error, req.id);
   }
-  
+
   return reply.send({ success: true, data: result.data });
 }
 
@@ -92,8 +110,7 @@ export async function handleOrderSuccess(
   req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const orderId = parseInt(req.params.id, 10);
-  const order = await getOrderById(orderId);
+  const order = await resolveOrderByParam(req.params.id);
   const paymentCode = order?.payment_code || req.params.id;
   const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=success`;
   return reply.redirect(url, 302);
@@ -103,8 +120,7 @@ export async function handleOrderError(
   req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const orderId = parseInt(req.params.id, 10);
-  const order = await getOrderById(orderId);
+  const order = await resolveOrderByParam(req.params.id);
   const paymentCode = order?.payment_code || req.params.id;
   const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=error`;
   return reply.redirect(url, 302);
@@ -114,8 +130,7 @@ export async function handleOrderCancel(
   req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const orderId = parseInt(req.params.id, 10);
-  const order = await getOrderById(orderId);
+  const order = await resolveOrderByParam(req.params.id);
   const paymentCode = order?.payment_code || req.params.id;
   const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=cancel`;
   return reply.redirect(url, 302);
