@@ -285,11 +285,18 @@ export async function createDeposit(
     .returning('*');
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
   fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+  const walletAddress = process.env.WALLET_ADDRESS || '';
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
+    pay_data: {
+      address: walletAddress,
+      qr_link: result.sepayOrder.qr_code_url,
+      qr_code: result.sepayOrder.qr_code_url,
+    },
     body: {
       qr_link: result.sepayOrder.qr_code_url,
+      qr_code: result.sepayOrder.qr_code_url,
       bankInfo: {
         bankName: result.sepayOrder.bank_info.bank_name,
         bankAccountName: result.sepayOrder.bank_info.account_holder_name,
@@ -334,9 +341,11 @@ export async function createWithdrawal(
       bank_account_no: req.payment_info.account_number,
       payment_info: JSON.stringify(req.payment_info),
       expired_at: expiredAt,
-    })
-    .returning('*');
-  const order = firstRow<OrderRow>(inserted as OrderRow | OrderRow[]);
+    });
+  const order = await db('orders').where({ payment_code }).first<OrderRow>();
+  if (!order) {
+    throw new Error('Failed to create withdrawal order');
+  }
   fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
 
   const walletAddress = process.env.WALLET_ADDRESS || '';
@@ -344,6 +353,15 @@ export async function createWithdrawal(
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
     pay_data: { address: walletAddress },
+    body: {
+      bankInfo: {
+        bankName: req.payment_info.bank_id,
+        bankAccountName: req.payment_info.full_name,
+        bankAccountNumber: req.payment_info.account_number,
+        transferContent: payment_code,
+        vaAmount: quote.net_vnd,
+      },
+    },
   });
 }
 

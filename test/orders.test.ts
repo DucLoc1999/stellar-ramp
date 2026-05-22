@@ -27,6 +27,11 @@ const WITHDRAWAL_BODY = {
   },
 };
 
+const DEPOSIT_WEBHOOK_BODY = {
+  ...DEPOSIT_BODY,
+  recipient: Keypair.random().publicKey(),
+};
+
 const PARTNER_APP_KEY = process.env.PARTNER_APP_KEY || 'test-partner-key';
 process.env.PARTNER_APP_KEY = PARTNER_APP_KEY;
 const PARTNER_HEADERS = { 'partner-app-key': PARTNER_APP_KEY };
@@ -296,7 +301,7 @@ describe('SePay webhook flow', () => {
       method: 'POST',
       url: '/api/orders/deposit',
       headers: PARTNER_HEADERS,
-      payload: DEPOSIT_BODY,
+      payload: DEPOSIT_WEBHOOK_BODY,
     });
     const { code } = create.json().data;
     const createdRow = await db('orders').where({ payment_code: code }).first();
@@ -338,7 +343,7 @@ describe('SePay webhook flow', () => {
       method: 'POST',
       url: '/api/orders/deposit',
       headers: PARTNER_HEADERS,
-      payload: DEPOSIT_BODY,
+      payload: DEPOSIT_WEBHOOK_BODY,
     });
     const { code } = create.json().data;
     const createdRow = await db('orders').where({ payment_code: code }).first();
@@ -373,7 +378,7 @@ describe('SePay webhook flow', () => {
       method: 'POST',
       url: '/api/orders/deposit',
       headers: PARTNER_HEADERS,
-      payload: DEPOSIT_BODY,
+      payload: DEPOSIT_WEBHOOK_BODY,
     });
     const { code } = create.json().data;
 
@@ -407,7 +412,7 @@ describe('SePay webhook flow', () => {
       method: 'POST',
       url: '/api/orders/deposit',
       headers: PARTNER_HEADERS,
-      payload: DEPOSIT_BODY,
+      payload: DEPOSIT_WEBHOOK_BODY,
     });
     const { code } = create.json().data;
     const createdRow = await db('orders').where({ payment_code: code }).first();
@@ -472,7 +477,7 @@ describe('updateOrderState', () => {
       method: 'POST',
       url: '/api/orders/deposit',
       headers: PARTNER_HEADERS,
-      payload: DEPOSIT_BODY,
+      payload: DEPOSIT_WEBHOOK_BODY,
     });
     const { code } = create.json().data;
 

@@ -28,7 +28,7 @@ deploy_to_production:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   tags:
-    - debian-server # Forces execution on your specific production server runner
+    - prod-deploy
   variables:
     IMAGE_NAME: "payment-svc"
     CONTAINER_NAME: "payment-svc-prod"
