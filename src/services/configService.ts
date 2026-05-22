@@ -93,12 +93,16 @@ export async function updateConfig(
   cache.set(key, value);
 
   if (key.startsWith('fee_rate')) {
-    await db('fee_audit_log').insert({
-      config_key: key,
-      old_value: old ?? null,
-      new_value: value,
-      changed_by: changedBy,
-    });
+    try {
+      await db('fee_audit_log').insert({
+        config_key: key,
+        old_value: old ?? null,
+        new_value: value,
+        changed_by: changedBy,
+      });
+    } catch (err) {
+      console.warn(`[ConfigService] fee_audit_log insert skipped for key="${key}":`, err);
+    }
   }
 }
 
@@ -172,12 +176,16 @@ export async function upsertTokenConfig(
     .merge({ value });
   cache.set(key, value);
 
-  await db('fee_audit_log').insert({
-    config_key: key,
-    old_value: old ?? null,
-    new_value: value,
-    changed_by: changedBy,
-  });
+  try {
+    await db('fee_audit_log').insert({
+      config_key: key,
+      old_value: old ?? null,
+      new_value: value,
+      changed_by: changedBy,
+    });
+  } catch (err) {
+    console.warn(`[ConfigService] fee_audit_log insert skipped for key="${key}":`, err);
+  }
 }
 
 async function getGlobalFallback(side: TokenSide, kind: TokenKind): Promise<number> {

@@ -100,18 +100,6 @@ vi.mock('../src/services/queueService', () => ({
   emitOrderPaid: vi.fn(async () => undefined),
 }));
 
-vi.mock('../src/services/configService', () => ({
-  getConfigNumber: vi.fn(async (key: string) => {
-    const defaults: Record<string, number> = {
-      fee_rate_buy: 0.008,
-      fee_rate_sell: 0.008,
-      spread_buy: 50,
-      spread_sell: 50,
-    };
-    return defaults[key] ?? 0;
-  }),
-}));
-
 afterEach(() => {
   vi.clearAllMocks();
 });

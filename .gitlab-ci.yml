@@ -34,7 +34,7 @@ deploy_to_production:
     - echo "Executing light-weight bare-metal deployment..."
 
     # 1. Navigate to your live application directory
-    - cd /var/www/my-project
+    - cd /mnt/code/be/usdt247-payment
 
     # 2. Fetch changes (pulling only those 1-2 altered characters)
     - git pull origin main
