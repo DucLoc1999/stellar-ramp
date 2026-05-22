@@ -7,9 +7,6 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 
 const sslEnabled = !isTestEnv && process.env.DB_SSL !== 'false';
 
-// Knex stores migration names with the source extension (.ts from dev runs).
-// In prod the files are compiled to .js — this source maps .ts names → .js files.
-// Use dynamic import() for ESM support in test environment.
 const migrationSource = {
   getMigrations(): Promise<string[]> {
     const dir = path.join(__dirname, 'migrations');
@@ -32,7 +29,9 @@ const migrationSource = {
   },
 };
 
-const dbConfig: Knex.Config = isTestEnv
+type KnexConfig = Parameters<typeof Knex>[0];
+
+const dbConfig: KnexConfig = isTestEnv
   ? {
       client: 'sqlite3',
       connection: {
