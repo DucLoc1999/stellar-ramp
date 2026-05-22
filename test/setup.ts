@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 import { afterEach, vi } from 'vitest';
 
 process.env.PARTNER_APP_KEY ??= 'test-partner-key';

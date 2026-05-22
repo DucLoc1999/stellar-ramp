@@ -128,7 +128,7 @@ describe('POST /api/orders/deposit', () => {
     const { data } = res.json();
     const row = await db('orders').where({ payment_code: data.code }).first();
     expect(row).toBeDefined();
-    expect(row.chain_id).toBe(56);
+    expect(row.chain_id).toBe('56');
     expect(row.token_address).toBe(DEPOSIT_BODY.token_address);
     expect(row.recipient).toBe(DEPOSIT_BODY.recipient);
     expect(row.callback).toBe(DEPOSIT_BODY.callback);
@@ -277,7 +277,7 @@ describe('GET /api/orders/:payment_code', () => {
     const { data } = res.json();
     expect(data.code).toBe(code);
     expect(data.state).toBe(1);
-    expect(data.chain_id).toBe(56);
+    expect(data.chain_id).toBe('56');
     expect(data.recipient).toBe(DEPOSIT_BODY.recipient);
   });
 

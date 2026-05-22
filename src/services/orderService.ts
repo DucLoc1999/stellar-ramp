@@ -66,8 +66,8 @@ export interface CreateDepositParams extends DepositRequest {
   _clientIp?: string;
 }
 
-function toTimestamp(date: Date): Usdt247Timestamp {
-  const ms = date.getTime();
+function toTimestamp(date: Date | string | number): Usdt247Timestamp {
+  const ms = new Date(date).getTime();
   return {
     seconds: Math.floor(ms / 1000),
     nanos: (ms % 1000) * 1_000_000,
@@ -80,7 +80,7 @@ async function toApiOrder(
 ): Promise<Usdt247Order> {
   const rate = typeof order.rate === 'string' ? Number(order.rate) : order.rate;
   const feeVnd = typeof order.fee_vnd === 'string' ? Number(order.fee_vnd) : order.fee_vnd;
-  const expiry = order.expired_at ?? new Date(order.created_at.getTime() + ORDER_EXPIRY_MS);
+  const expiry = order.expired_at ?? new Date(order.created_at).getTime() + ORDER_EXPIRY_MS;
   let paymentInfo: Usdt247PaymentInfo | null = null;
   if (order.payment_info && typeof order.payment_info === 'object') {
     paymentInfo = order.payment_info as Usdt247PaymentInfo;
