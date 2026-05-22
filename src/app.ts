@@ -9,6 +9,7 @@ import { orderRoutes } from './routes/orderRoutes';
 import { webhookRoutes } from './routes/webhookRoutes';
 import { adminRoutes } from './routes/adminRoutes';
 import { bypassRoutes } from './routes/bypassRoutes';
+import { cmsRoutes } from './routes/cmsRoutes';
 import { landingRoutes } from './routes/landingRoutes';
 import { errorHandler } from './middlewares/errorHandler';
 import db from './db';
@@ -20,7 +21,12 @@ import { ensureBootstrapAdmin } from './services/adminService';
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
 
-  await app.register(cors);
+  await app.register(cors, {
+    origin: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'partner-app-key'],
+    credentials: true,
+  });
 
   await app.register(swagger, {
     openapi: {
@@ -47,6 +53,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(adminRoutes);
   await app.register(bypassRoutes);
+  await app.register(cmsRoutes, { prefix: '/cms' });
   await app.register(landingRoutes, { prefix: '/landing' });
   await app.register(priceRoutes, { prefix: '/api/rate' });
   await app.register(configRoutes, { prefix: '/config' });

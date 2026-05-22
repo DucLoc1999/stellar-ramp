@@ -35,6 +35,11 @@ export async function verifyAdminCredentials(email: string, password: string): P
   return { id: row.id, email: row.email };
 }
 
+export async function changeAdminPassword(email: string, newPassword: string): Promise<void> {
+  const { saltHex, hashHex } = await hashPassword(newPassword);
+  await db('admins').where({ email }).update({ password_salt: saltHex, password_hash: hashHex });
+}
+
 export async function ensureBootstrapAdmin(): Promise<void> {
   const email = process.env.ADMIN_BOOTSTRAP_EMAIL;
   const password = process.env.ADMIN_BOOTSTRAP_PASSWORD;
