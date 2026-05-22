@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { insertSnapshot, type Exchange } from './snapshotLandingPageDb';
 import { getRate } from './priceService';
-import { fetchBinanceP2POffers } from './binanceService';
+import { fetchBinanceP2POffers } from './priceSources/binanceSource';
 import { logger } from '../config/logger';
 
 const INTERVAL_MS = 60_000;

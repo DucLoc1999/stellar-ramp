@@ -1,4 +1,4 @@
-import { getBinancePrices } from './binanceService';
+import { getPrices } from './priceSources';
 import { getTokenConfig } from './configService';
 
 export interface RateResult {
@@ -30,7 +30,7 @@ const DEFAULT_ASSET = 'USDC';
 
 export async function getRate(asset: string = DEFAULT_ASSET): Promise<RateResult> {
   const [prices, spreadBuy, spreadSell, feeRateBuy, feeRateSell] = await Promise.all([
-    getBinancePrices(asset),
+    getPrices(asset),
     getTokenConfig(asset, 'buy', 'spread'),
     getTokenConfig(asset, 'sell', 'spread'),
     getTokenConfig(asset, 'buy', 'fee_rate'),
