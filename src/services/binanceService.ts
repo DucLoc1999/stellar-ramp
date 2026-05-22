@@ -21,19 +21,32 @@ const FALLBACK_PRICES: Record<string, number> = {
   XLM: 7500,
 };
 
-async function fetchMedianPrice(tradeType: 'BUY' | 'SELL', asset: string): Promise<number> {
+export interface BinanceP2POptions {
+  asset: string;
+  fiat?: string;
+  tradeType: 'BUY' | 'SELL';
+  rows?: number;
+  merchantCheck?: boolean;
+  publisherType?: string | null;
+  transAmount?: string;
+}
+
+export async function fetchBinanceP2POffers(opts: BinanceP2POptions): Promise<number[]> {
+  const body: Record<string, unknown> = {
+    asset: opts.asset,
+    fiat: opts.fiat ?? 'VND',
+    merchantCheck: opts.merchantCheck ?? false,
+    page: 1,
+    publisherType: opts.publisherType ?? null,
+    rows: opts.rows ?? 5,
+    tradeType: opts.tradeType,
+  };
+  if (opts.transAmount) body.transAmount = opts.transAmount;
+
   const res = await fetch(BINANCE_P2P_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      asset,
-      fiat: 'VND',
-      merchantCheck: false,
-      page: 1,
-      publisherType: null,
-      rows: 5,
-      tradeType,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) throw new Error(`Binance P2P returned ${res.status}`);
@@ -41,9 +54,13 @@ async function fetchMedianPrice(tradeType: 'BUY' | 'SELL', asset: string): Promi
   const json = (await res.json()) as { data: Array<{ adv: { price: string } }> };
   const prices = json.data.map((d) => Number(d.adv.price));
   if (prices.length === 0) {
-    throw new Error(`No ${asset} offers on Binance P2P`);
+    throw new Error(`No ${opts.asset} offers on Binance P2P`);
   }
-  prices.sort((a, b) => a - b);
+  return prices.sort((a, b) => a - b);
+}
+
+async function fetchMedianPrice(tradeType: 'BUY' | 'SELL', asset: string): Promise<number> {
+  const prices = await fetchBinanceP2POffers({ asset, tradeType });
   return prices[Math.floor(prices.length / 2)];
 }
 
@@ -102,6 +119,3 @@ export async function getBinancePrices(asset: string = 'USDC'): Promise<{ buy: n
   }
 }
 
-export function invalidatePriceCache(): void {
-  priceCache.clear();
-}

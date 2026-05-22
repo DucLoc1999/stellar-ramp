@@ -1,13 +1,10 @@
 import * as crypto from 'crypto';
 import { insertSnapshot, type Exchange } from './snapshotLandingPageDb';
 import { getRate } from './priceService';
+import { fetchBinanceP2POffers } from './binanceService';
 import { logger } from '../config/logger';
 
 const INTERVAL_MS = 60_000;
-
-interface BinanceApiResponse {
-  data?: Array<{ adv: { price: string } }>;
-}
 
 interface BybitApiResponse {
   ret_code: number;
@@ -23,31 +20,15 @@ interface UsdRateResponse {
 }
 
 async function fetchBinancePrices(): Promise<{ buy: number | null; sell: number | null }> {
-  const url = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
+  const opts = { asset: 'USDC', rows: 20, merchantCheck: true, publisherType: 'merchant', transAmount: '150000000' };
 
-  async function fetchSide(tradeType: 'BUY' | 'SELL'): Promise<number | null> {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        asset: 'USDC',
-        fiat: 'VND',
-        merchantCheck: true,
-        page: 1,
-        payTypes: [],
-        publisherType: 'merchant',
-        rows: 20,
-        tradeType,
-        transAmount: '150000000',
-      }),
-    });
-    const data = (await response.json()) as BinanceApiResponse;
-    if (!data.data?.length) return null;
-    const prices = data.data.map((item) => Number(item.adv.price));
-    return tradeType === 'BUY' ? Math.min(...prices) : Math.max(...prices);
-  }
+  const [buyPrices, sellPrices] = await Promise.all([
+    fetchBinanceP2POffers({ ...opts, tradeType: 'BUY' }),
+    fetchBinanceP2POffers({ ...opts, tradeType: 'SELL' }),
+  ]);
 
-  const [buy, sell] = await Promise.all([fetchSide('BUY'), fetchSide('SELL')]);
+  const buy = buyPrices.length ? Math.min(...buyPrices) : null;
+  const sell = sellPrices.length ? Math.max(...sellPrices) : null;
   return { buy, sell };
 }
 async function fetchOkxPrices(): Promise<{ buy: number | null; sell: number | null }> {
