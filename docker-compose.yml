@@ -1,12 +1,15 @@
 version: '3.8'
 
 services:
-  app:
+  # ==========================================
+  # Service 1: Main Payment API
+  # ==========================================
+  payment-api:
     build:
       context: .
       dockerfile: Dockerfile
       target: production
-    container_name: payment-svc
+    container_name: payment-api
     restart: unless-stopped
     ports:
       - '${PORT:-3000}:${PORT:-3000}'
@@ -35,4 +38,35 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
-    command: tail -f /dev/null  # Thêm dòng này để "treo" container
+    networks:
+      - payment-network
+    depends_on:
+      - stellar-listener
+
+  # ==========================================
+  # Service 2: Stellar Blockchain Listener
+  # ==========================================
+  stellar-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile.listener
+      target: production
+    container_name: stellar-listener
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - payment-network
+
+networks:
+  payment-network:
+    driver: bridge

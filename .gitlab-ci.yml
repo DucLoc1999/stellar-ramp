@@ -21,7 +21,7 @@ test_application:
     - if: $CI_COMMIT_BRANCH == "main"
 
 # ==========================================
-# STAGE 2: CD / Bare-Metal Deploy (Runs on Your Production Server)
+# STAGE 2: CD / Docker Deployment (Runs on Your Production Server)
 # ==========================================
 deploy_to_production:
   stage: deploy
@@ -31,35 +31,53 @@ deploy_to_production:
     - prod-deploy
   needs: ["test_application"]
   script:
-    - echo "Executing light-weight bare-metal deployment..."
+    - echo "🚀 Starting Docker-based deployment..."
 
-    # 1. Navigate to your live application directory
+    # 0. Fix git dubious ownership issue
+    - git config --global --add safe.directory /mnt/code/be/usdt247-payment
+
+    # 1. Navigate to deployment directory
     - cd /mnt/code/be/usdt247-payment
 
-    # 2. Fetch changes (pulling only those 1-2 altered characters)
+    # 2. Pull latest code from main branch
     - git pull origin main
 
-    # 3. Smart Dependency Check
-    # Compares the current commit to the previous one. If package.json didn't change,
-    # it skips 'npm i' entirely, saving massive disk I/O and time.
-    - |
-      if git diff --name-only HEAD~1 HEAD | grep -q "package.json"; then
-        echo "package.json modified. Running npm install..."
-        npm i
-      else
-        echo "No changes in package.json. Skipping dependency installation."
-      fi
+    # 3. Create .env file from GitLab CI/CD variables (if needed)
+    # Uncomment and set your variables in GitLab CI/CD Settings > Variables
+    # - echo "DB_HOST=$DB_HOST" >> .env
+    # - echo "DB_PORT=$DB_PORT" >> .env
+    # - echo "PORT=$PORT" >> .env
 
-    # 4. RAM Capping for Production Safety
-    # Prevents Node.js from consuming 100% of your server's RAM during compilation,
-    # which could otherwise crash your live app instance.
-    - export NODE_OPTIONS="--max-old-space-size=2048"
-    - npm run build
+    # 4. Build Docker images
+    # Uses Docker layer caching - only rebuilds changed layers
+    - echo "📦 Building Docker images..."
+    - docker-compose build --no-cache
 
-    # 5. Zero-Downtime Service Reload
-    # Using 'reload' instead of 'restart' keeps your app online for users
-    # by hot-swapping the active processes smoothly via PM2.
-    - pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
+    # 5. Stop and remove old containers gracefully
+    - echo "🛑 Stopping old containers..."
+    - docker-compose down || true
 
-    # 6. Migration (if needed, runs silently)
-    - npm run migrate:prod || true
+    # 6. Start new containers in detached mode
+    - echo "▶️  Starting new containers..."
+    - docker-compose up -d
+
+    # 7. Run database migrations (if applicable)
+    - echo "🗄️  Running migrations..."
+    - docker-compose exec -T payment-api npm run migrate:prod || true
+
+    # 8. Health check - wait for services to be healthy
+    - echo "🏥 Checking service health..."
+    - sleep 10
+    - docker-compose ps
+
+    # 9. Clean up old/dangling Docker images to save disk space
+    - echo "🧹 Cleaning up old images..."
+    - docker image prune -f
+
+    # 10. Show logs for verification
+    - echo "📋 Container logs:"
+    - docker-compose logs --tail=50
+
+  after_script:
+    # Always show running containers for debugging
+    - docker ps -a
