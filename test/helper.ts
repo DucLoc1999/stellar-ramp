@@ -50,12 +50,11 @@ async function setupTestTables() {
   // Fee audit log
   await db.schema.createTable('fee_audit_log', (t) => {
     t.increments('id');
-    t.string('action', 50);
-    t.string('key_name', 100);
+    t.string('config_key', 100).notNullable();
     t.string('old_value', 255);
-    t.string('new_value', 255);
+    t.string('new_value', 255).notNullable();
     t.string('changed_by', 100);
-    t.timestamp('created_at').defaultTo(db.fn.now());
+    t.timestamp('changed_at').defaultTo(db.fn.now());
   });
 
   // Orders table
