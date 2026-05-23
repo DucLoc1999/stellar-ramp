@@ -18,7 +18,7 @@ export interface HistoryRow {
   sell: number | null;
 }
 
-const DB_PATH = path.resolve('p2p_prices.db');
+const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.resolve('p2p_prices.db');
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 const db = new DatabaseSync(DB_PATH);

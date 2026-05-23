@@ -36,6 +36,18 @@ else
     chmod -R 755 /app/logs
 fi
 
+# Ensure SQLite data directory exists with correct permissions
+if [ -d "/app/data" ]; then
+    echo "📝 Setting up SQLite data directory..."
+    chown -R node:node /app/data
+    chmod -R 755 /app/data
+else
+    echo "⚠️  Data directory not found, creating..."
+    mkdir -p /app/data
+    chown -R node:node /app/data
+    chmod -R 755 /app/data
+fi
+
 # Switch to non-root user and execute the command
 echo "👤 Switching to 'node' user..."
 echo "🚀 Starting application: $@"

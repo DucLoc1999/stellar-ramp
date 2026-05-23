@@ -21,6 +21,7 @@ services:
       HOST: ${HOST:-0.0.0.0}
     volumes:
       - ./logs:/app/logs
+      - ./data:/app/data
     healthcheck:
       test:
         [
