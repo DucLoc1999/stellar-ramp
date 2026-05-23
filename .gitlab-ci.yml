@@ -51,24 +51,24 @@ deploy_to_production:
     # 4. Build Docker images
     # Uses Docker layer caching - only rebuilds changed layers
     - echo "📦 Building Docker images..."
-    - docker-compose build --no-cache
+    - docker compose build --no-cache
 
     # 5. Stop and remove old containers gracefully
     - echo "🛑 Stopping old containers..."
-    - docker-compose down || true
+    - docker compose down || true
 
     # 6. Start new containers in detached mode
     - echo "▶️  Starting new containers..."
-    - docker-compose up -d
+    - docker compose up -d
 
     # 7. Run database migrations (if applicable)
     - echo "🗄️  Running migrations..."
-    - docker-compose exec -T payment-api npm run migrate:prod || true
+    - docker compose exec -T payment-api npm run migrate:prod || true
 
     # 8. Health check - wait for services to be healthy
     - echo "🏥 Checking service health..."
     - sleep 10
-    - docker-compose ps
+    - docker compose ps
 
     # 9. Clean up old/dangling Docker images to save disk space
     - echo "🧹 Cleaning up old images..."
@@ -76,7 +76,7 @@ deploy_to_production:
 
     # 10. Show logs for verification
     - echo "📋 Container logs:"
-    - docker-compose logs --tail=50
+    - docker compose logs --tail=50
 
   after_script:
     # Always show running containers for debugging
