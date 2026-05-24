@@ -35,6 +35,8 @@ export const ErrorCodes = {
   RECIPIENT_NO_TRUSTLINE: { code: 'RECIPIENT_NO_TRUSTLINE', statusCode: 400, retriable: false },
   RECIPIENT_TRUSTLINE_NOT_AUTHORIZED: { code: 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED', statusCode: 400, retriable: false },
   RECIPIENT_INSUFFICIENT_LIMIT: { code: 'RECIPIENT_INSUFFICIENT_LIMIT', statusCode: 400, retriable: false },
+  INSUFFICIENT_LIQUIDITY: { code: 'INSUFFICIENT_LIQUIDITY', statusCode: 409, retriable: false },
+  RESERVATION_NOT_READY: { code: 'RESERVATION_NOT_READY', statusCode: 503, retriable: true },
 } as const;
 
 export function createErrorReply(

@@ -7,6 +7,7 @@ import { triggerDisburse, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CO
 import { getConfigNumber } from './configService';
 import { executePayout } from './payoutService';
 import { emitOrderPaid } from './queueService';
+import { consumeReservation, releaseReservation, reserveForOrder, rollbackReservation } from './reservationService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
 import { OrderState, ProcessingState } from '../models/types';
@@ -160,9 +161,9 @@ function firstInsertedId(result: unknown): number {
   return Number(result);
 }
 
-export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC') {
+export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC', paymentCode?: string) {
   const quote = await getQuote('buy', usdt_amount, asset);
-  const payment_code = generatePaymentCode();
+  const payment_code = paymentCode || generatePaymentCode();
   const sepayOrder = await createSepayOrder({
     payment_code,
     net_vnd: quote.net_vnd,
@@ -214,6 +215,10 @@ export async function confirmPayment(params: {
       payment_confirmed_at: db.fn.now(),
     });
 
+  if (order.direction === 'buy') {
+    await consumeReservation(params.payment_code);
+  }
+
   if (order.direction === 'buy' && order.recipient) {
     await db('orders')
       .where({ payment_code: params.payment_code })
@@ -264,25 +269,49 @@ export async function createDeposit(
     throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
   }
 
-  const usdtAmount = Number(req.amount);
-  const result = await createBuyOrder(usdtAmount, req.asset_code);
   const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
-  const updated = await db('orders')
-    .where({ payment_code: result.payment_code })
-    .update({
-      chain_id: req.chain_id,
-      token_address: req.token_address,
-      asset_code: req.asset_code,
-      recipient: req.recipient,
-      callback: req.callback,
-      order_state: OrderState.CREATED,
-      processing_state: 10,
-      expired_at: expiredAt,
-      va_number: result.sepayOrder.va_number,
-      transfer_content: result.sepayOrder.transfer_content,
-      amount: result.sepayOrder.amount,
-    })
-    .returning('*');
+  const paymentCode = generatePaymentCode();
+  const reserveResult = await reserveForOrder({
+    paymentCode,
+    token: req.asset_code,
+    amount: req.amount,
+    expiresAt: expiredAt,
+  });
+  if (!reserveResult.success) {
+    throw new Error(reserveResult.error || 'INSUFFICIENT_LIQUIDITY');
+  }
+
+  const usdtAmount = Number(req.amount);
+  let result: Awaited<ReturnType<typeof createBuyOrder>>;
+  try {
+    result = await createBuyOrder(usdtAmount, req.asset_code, paymentCode);
+  } catch (error) {
+    await rollbackReservation(paymentCode);
+    throw error;
+  }
+
+  let updated;
+  try {
+    updated = await db('orders')
+      .where({ payment_code: result.payment_code })
+      .update({
+        chain_id: req.chain_id,
+        token_address: req.token_address,
+        asset_code: req.asset_code,
+        recipient: req.recipient,
+        callback: req.callback,
+        order_state: OrderState.CREATED,
+        processing_state: 10,
+        expired_at: expiredAt,
+        va_number: result.sepayOrder.va_number,
+        transfer_content: result.sepayOrder.transfer_content,
+        amount: result.sepayOrder.amount,
+      })
+      .returning('*');
+  } catch (error) {
+    await rollbackReservation(paymentCode);
+    throw error;
+  }
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
   fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   const walletAddress = process.env.WALLET_ADDRESS || '';
@@ -431,6 +460,10 @@ async function performCancel(order: OrderRow, reason?: string): Promise<CancelRe
     })
     .returning('*');
   const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
+
+  if (order.direction === 'buy') {
+    await releaseReservation(order.payment_code);
+  }
 
   if (order.callback) {
     fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch((err) => console.error('[OrderService] fireCallback failed:', err));

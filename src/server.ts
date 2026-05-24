@@ -7,11 +7,13 @@ import { initKafka, disconnectKafka } from './services/queueService';
 import { startSnapshotScheduler } from './services/snapshotLandingPageScheduler';
 import { startOrderExpiryScheduler } from './services/orderExpiryScheduler';
 import { refresh as refreshConfig } from './services/configService';
+import { initReservationService, shutdownReservationService, startReservationSchedulers } from './services/reservationService';
 import db from './db';
 
 let app: ReturnType<typeof buildApp> extends Promise<infer T> ? T : never;
 let snapshotInterval: NodeJS.Timeout | undefined;
 let expiryInterval: NodeJS.Timeout | undefined;
+let reservationIntervals: NodeJS.Timeout[] = [];
 
 async function healthCheck() {
   try {
@@ -33,6 +35,8 @@ async function gracefulShutdown(signal: string) {
     await disconnectKafka();
     if (snapshotInterval) clearInterval(snapshotInterval);
     if (expiryInterval) clearInterval(expiryInterval);
+    for (const interval of reservationIntervals) clearInterval(interval);
+    await shutdownReservationService();
     await db.destroy();
     if (app && app.close) {
       await app.close();
@@ -49,6 +53,7 @@ async function start() {
   await refreshConfig();
   await healthCheck();
   await checkKafkaConnection();
+  await initReservationService();
   // await checkHotWalletTrustline();
 
   const builtApp = await buildApp();
@@ -63,6 +68,7 @@ async function start() {
   await app.listen({ port, host });
   snapshotInterval = startSnapshotScheduler();
   expiryInterval = startOrderExpiryScheduler();
+  reservationIntervals = startReservationSchedulers();
 }
 
 start();

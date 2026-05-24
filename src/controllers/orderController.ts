@@ -57,6 +57,12 @@ export async function handleDeposit(
     if (errMsg === 'XLM_MIN_AMOUNT_1') {
       return createErrorReply(reply, 'INVALID_AMOUNT', 'Minimum XLM amount is 1 (required to activate new Stellar accounts)', req.id);
     }
+    if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
+      return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
+    }
+    if (errMsg === 'RESERVATION_NOT_READY') {
+      return createErrorReply(reply, 'RESERVATION_NOT_READY', 'Liquidity reservation service is not ready', req.id);
+    }
     throw error;
   }
 }
