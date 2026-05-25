@@ -75,8 +75,19 @@ export async function handleWithdrawal(
   if (!amount || amount <= 0) {
     return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
   }
-  const data = await createWithdrawal(req.body, { clientIp: req.ip });
-  return reply.send({ success: true, data });
+  try {
+    const data = await createWithdrawal(req.body, { clientIp: req.ip });
+    return reply.send({ success: true, data });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
+      return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
+    }
+    if (errMsg === 'RESERVATION_NOT_READY') {
+      return createErrorReply(reply, 'RESERVATION_NOT_READY', 'Liquidity reservation service is not ready', req.id);
+    }
+    throw error;
+  }
 }
 
 export async function handleGetOrder(

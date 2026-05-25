@@ -1,6 +1,13 @@
 import { PayOS, PayoutRequest as PayOSPayoutRequest } from '@payos/node';
 import { getBinById } from '../config/banks';
 
+export interface BalanceResult {
+  success: boolean;
+  balance?: number;
+  availableBalance?: number;
+  error?: string;
+}
+
 export interface PayoutRequest {
   orderId: number;
   amount: number;
@@ -27,6 +34,53 @@ function getPayOS(): PayOS {
     });
   }
   return payOSInstance;
+}
+
+export async function getAccountBalance(forceStub = false): Promise<BalanceResult> {
+  if (process.env.PAYOUT_MODE === 'stub' || forceStub) {
+    console.log(`[PayoutService] STUB getAccountBalance called`);
+    return {
+      success: true,
+      balance: 50000000,
+      availableBalance: 45000000,
+    };
+  }
+
+  getPayOS();
+
+  try {
+    console.log(`[PayoutService] PAYOS fetching account balance via Native Fetch...`);
+
+    const response = await fetch('https://api-merchant.payos.vn/v1/payouts-account/balance', {
+      method: 'GET',
+      headers: {
+        'x-client-id': process.env.PAYOS_CLIENT_ID!,
+        'x-api-key': process.env.PAYOS_API_KEY!,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = (await response.json()) as any;
+
+    if (result.code === '00') {
+      console.log(`[PayoutService] PAYOS fetch balance success`);
+      return {
+        success: true,
+        balance: result.data.balance,
+        availableBalance: result.data.availableBalance,
+      };
+    } else {
+      throw new Error(result.desc || 'Unknown error from PayOS');
+    }
+  } catch (err) {
+    console.error(`[PayoutService] PAYOS fetch balance error:`, err);
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 }
 
 export async function executePayout(req: PayoutRequest, forceStub = false): Promise<PayoutResult> {

@@ -92,9 +92,13 @@ vi.mock('../src/services/callbackService', () => ({
   fireCallback: vi.fn(async () => undefined),
 }));
 
-vi.mock('../src/services/payoutService', () => ({
-  executePayout: vi.fn(async () => ({ success: true, transactionId: 'mock-payout-id' })),
-}));
+vi.mock('../src/services/payoutService', async () => {
+  const actual = await vi.importActual('../src/services/payoutService');
+  return {
+    ...actual,
+    executePayout: vi.fn(async () => ({ success: true, transactionId: 'mock-payout-id' })),
+  };
+});
 
 vi.mock('../src/services/queueService', () => ({
   emitDisburseCrypto: vi.fn(async () => undefined),

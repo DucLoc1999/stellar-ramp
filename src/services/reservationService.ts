@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import db from '../db';
+import { getAccountBalance } from './payoutService';
 
 const MICRO_SCALE = 7;
 const RESERVATION_TTL_GRACE_MS = 5 * 60 * 1000;
@@ -111,6 +112,7 @@ export async function initReservationService(): Promise<void> {
   });
   enabled = true;
   await syncWalletBalances();
+  await syncVndBalance();
   await reconcileReservedTotalsFromDb();
   ready = true;
 }
@@ -125,6 +127,7 @@ export function startReservationSchedulers(): NodeJS.Timeout[] {
   }, sweepMs);
   const b = setInterval(() => {
     syncWalletBalances().catch((err) => console.error('[Reservation] syncWalletBalances failed:', err));
+    syncVndBalance().catch((err) => console.error('[Reservation] syncVndBalance failed:', err));
   }, walletSyncMs);
   const c = setInterval(() => {
     reconcileReservedTotalsFromDb().catch((err) => console.error('[Reservation] reconcile failed:', err));
@@ -262,19 +265,40 @@ export async function syncWalletBalances(): Promise<void> {
   await client.set(balanceKey('XLM'), toUnits(xlm).toString());
 }
 
+export async function syncVndBalance(): Promise<void> {
+  if (!isEnabled()) return;
+  const client = redis!;
+  const result = await getAccountBalance();
+  if (!result.success) {
+    console.error('[Reservation] syncVndBalance failed:', result.error);
+    ready = false;
+    return;
+  }
+  await client.set(balanceKey('VND'), toUnits(String(result.availableBalance ?? 0)).toString());
+}
+
 export async function reconcileReservedTotalsFromDb(): Promise<void> {
   if (!isEnabled()) return;
   const client = redis!;
-  const rows = await db('orders')
+  const buyRows = await db('orders')
     .select('asset_code')
     .sum<{ asset_code: string; total: string }[]>({ total: 'usdt_amount' })
     .where({ direction: 'buy', payment_status: 'pending', order_state: 1 })
     .andWhere('expired_at', '>', db.fn.now())
     .groupBy('asset_code');
-  const totals = new Map<string, bigint>([['USDC', 0n], ['XLM', 0n]]);
-  for (const row of rows) {
+  const sellRows = await db('orders')
+    .select('direction')
+    .sum<{ direction: string; total: string }[]>({ total: 'net_vnd' })
+    .where({ direction: 'sell', payment_status: 'pending', order_state: 1 })
+    .andWhere('expired_at', '>', db.fn.now())
+    .groupBy('direction');
+  const totals = new Map<string, bigint>([['USDC', 0n], ['XLM', 0n], ['VND', 0n]]);
+  for (const row of buyRows) {
     const token = (row.asset_code || 'USDC').toUpperCase();
     totals.set(token, toUnits(row.total || '0'));
+  }
+  for (const row of sellRows) {
+    totals.set('VND', toUnits(row.total || '0'));
   }
   const tx = client.multi();
   for (const [token, value] of totals.entries()) {

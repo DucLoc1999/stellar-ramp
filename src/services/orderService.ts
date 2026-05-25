@@ -5,7 +5,7 @@ import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
 import { getConfigNumber } from './configService';
-import { executePayout } from './payoutService';
+import { executePayout, getAccountBalance } from './payoutService';
 import { emitOrderPaid } from './queueService';
 import { consumeReservation, releaseReservation, reserveForOrder, rollbackReservation } from './reservationService';
 import type { DepositRequest, WithdrawalRequest } from '../models/types';
@@ -349,28 +349,45 @@ export async function createWithdrawal(
   const quote = await getQuote('sell', usdtAmount, req.asset_code);
   const payment_code = generatePaymentCode();
   const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
-  const inserted = await db('orders')
-    .insert({
-      payment_code,
-      direction: 'sell',
-      usdt_amount: quote.usdt_amount,
-      rate: quote.rate,
-      net_vnd: quote.net_vnd,
-      fee_rate: quote.fee_rate,
-      fee_vnd: quote.fee_vnd,
-      payment_status: 'pending',
-      order_state: OrderState.CREATED,
-      processing_state: 10,
-      chain_id: req.chain_id,
-      token_address: tokenAddress,
-      asset_code: req.asset_code,
-      callback: req.callback,
-      bank_id: req.payment_info.bank_id,
-      bank_account_name: req.payment_info.full_name,
-      bank_account_no: req.payment_info.account_number,
-      payment_info: JSON.stringify(req.payment_info),
-      expired_at: expiredAt,
-    });
+
+  const reserveResult = await reserveForOrder({
+    paymentCode: payment_code,
+    token: 'VND',
+    amount: quote.net_vnd,
+    expiresAt: expiredAt,
+  });
+  if (!reserveResult.success) {
+    throw new Error(reserveResult.error || 'INSUFFICIENT_LIQUIDITY');
+  }
+
+  let inserted: unknown;
+  try {
+    inserted = await db('orders')
+      .insert({
+        payment_code,
+        direction: 'sell',
+        usdt_amount: quote.usdt_amount,
+        rate: quote.rate,
+        net_vnd: quote.net_vnd,
+        fee_rate: quote.fee_rate,
+        fee_vnd: quote.fee_vnd,
+        payment_status: 'pending',
+        order_state: OrderState.CREATED,
+        processing_state: 10,
+        chain_id: req.chain_id,
+        token_address: tokenAddress,
+        asset_code: req.asset_code,
+        callback: req.callback,
+        bank_id: req.payment_info.bank_id,
+        bank_account_name: req.payment_info.full_name,
+        bank_account_no: req.payment_info.account_number,
+        payment_info: JSON.stringify(req.payment_info),
+        expired_at: expiredAt,
+      });
+  } catch (error) {
+    await rollbackReservation(payment_code);
+    throw error;
+  }
   const order = await db('orders').where({ payment_code }).first<OrderRow>();
   if (!order) {
     throw new Error('Failed to create withdrawal order');
@@ -462,6 +479,10 @@ async function performCancel(order: OrderRow, reason?: string): Promise<CancelRe
   const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
 
   if (order.direction === 'buy') {
+    await releaseReservation(order.payment_code);
+  }
+
+  if (order.direction === 'sell') {
     await releaseReservation(order.payment_code);
   }
 
@@ -621,6 +642,40 @@ export async function processSellPayment(params: {
     fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, ProcessingState.SELL_PAYMENT_RECEIVED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
 
+  if (process.env.PAYOUT_MODE !== 'stub') {
+    const balance = await getAccountBalance();
+    if (!balance.success) {
+      console.error(`[OrderService] VND balance check failed before payout: ${balance.error}`);
+      await db('orders')
+        .where({ id: order.id })
+        .update({
+          order_state: OrderState.FAILED,
+          processing_state: ProcessingState.SELL_PAYOUT_FAILED,
+          error_message: 'VND_BALANCE_CHECK_FAILED',
+        });
+      if (order.callback) {
+        fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+      }
+      await releaseReservation(memo!);
+      return { success: false, error: 'VND_BALANCE_CHECK_FAILED' };
+    }
+    if ((balance.availableBalance ?? 0) < Number(order.net_vnd)) {
+      console.error(`[OrderService] Insufficient VND for payout: available=${balance.availableBalance}, needed=${order.net_vnd}`);
+      await db('orders')
+        .where({ id: order.id })
+        .update({
+          order_state: OrderState.FAILED,
+          processing_state: ProcessingState.SELL_PAYOUT_FAILED,
+          error_message: 'INSUFFICIENT_VND_BALANCE',
+        });
+      if (order.callback) {
+        fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+      }
+      await releaseReservation(memo!);
+      return { success: false, error: 'INSUFFICIENT_VND_BALANCE' };
+    }
+  }
+
   const payInfo = typeof order.payment_info === 'string'
     ? JSON.parse(order.payment_info)
     : order.payment_info;
@@ -652,6 +707,8 @@ export async function processSellPayment(params: {
       txHash,
       paymentCode: order.payment_code,
     });
+
+    await consumeReservation(memo!);
   } else {
     await db('orders')
       .where({ id: order.id })
@@ -664,6 +721,8 @@ export async function processSellPayment(params: {
     if (order.callback) {
       fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
     }
+
+    await releaseReservation(memo!);
   }
 
   return { success: payoutResult.success, error: payoutResult.error };
