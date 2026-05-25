@@ -271,17 +271,22 @@ export async function createDeposit(
 
   const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
   const paymentCode = generatePaymentCode();
+  const usdtAmount = Number(req.amount);
+
+  const quote = await getQuote('buy', usdtAmount, req.asset_code);
+
   const reserveResult = await reserveForOrder({
     paymentCode,
+    direction: 'buy',
     token: req.asset_code,
     amount: req.amount,
+    vndAmount: quote.net_vnd,
     expiresAt: expiredAt,
   });
   if (!reserveResult.success) {
     throw new Error(reserveResult.error || 'INSUFFICIENT_LIQUIDITY');
   }
 
-  const usdtAmount = Number(req.amount);
   let result: Awaited<ReturnType<typeof createBuyOrder>>;
   try {
     result = await createBuyOrder(usdtAmount, req.asset_code, paymentCode);
@@ -352,8 +357,10 @@ export async function createWithdrawal(
 
   const reserveResult = await reserveForOrder({
     paymentCode: payment_code,
+    direction: 'sell',
     token: 'VND',
     amount: quote.net_vnd,
+    vndAmount: quote.net_vnd,
     expiresAt: expiredAt,
   });
   if (!reserveResult.success) {
