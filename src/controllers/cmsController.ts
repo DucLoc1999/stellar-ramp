@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { verifyAdminCredentials, createAdmin, findAdminByEmail, changeAdminPassword } from '../services/adminService';
-import { getAllConfig, updateConfig } from '../services/configService';
+import { getAllTokenConfigs, upsertTokenConfig, getConfig, updateConfig } from '../services/configService';
+import { AVAILABLE_PRICE_SOURCES } from '../services/priceSources';
 import { getRate } from '../services/priceService';
 import { signJwt } from '../utils/jwt';
 import { createErrorReply } from '../middlewares/errorHandler';
@@ -78,48 +79,46 @@ export async function handleCreateAdmin(
 const TOKENS = ['usdc', 'xlm'] as const;
 type Token = typeof TOKENS[number];
 
-const FIELD_KEYS = ['spread_buy', 'spread_sell', 'fee_rate_buy', 'fee_rate_sell', 'min_fee'] as const;
-type FieldKey = typeof FIELD_KEYS[number];
+type SidePatch = { spread?: number; fee_rate?: number; min_fee?: number; min_order_amount?: number; source?: string };
+type PatchBody = Partial<Record<Token, { buy?: SidePatch; sell?: SidePatch }>>;
 
-const DEFAULTS: Record<FieldKey, number> = {
-  spread_buy: 50,
-  spread_sell: 50,
-  fee_rate_buy: 0.008,
-  fee_rate_sell: 0.008,
-  min_fee: 5000,
-};
+const AVAILABLE_PRICE_SOURCES_KEY = 'available_price_sources';
 
-type TokenConfig = Record<FieldKey, number>;
-type AllTokenConfig = Record<Token, TokenConfig>;
-
-type PatchBody = Partial<Record<Token, Partial<Record<FieldKey, number>>>>;
-
-async function getOrCreateTokenConfig(changedBy: string): Promise<AllTokenConfig> {
-  const config = await getAllConfig();
-  const result = {} as AllTokenConfig;
-
-  for (const token of TOKENS) {
-    const tokenCfg = {} as TokenConfig;
-    for (const field of FIELD_KEYS) {
-      const key = `${token}_${field}`;
-      if (config[key] === undefined) {
-        await updateConfig(key, String(DEFAULTS[field]), changedBy);
-        tokenCfg[field] = DEFAULTS[field];
-      } else {
-        tokenCfg[field] = Number(config[key]);
-      }
+async function getAvailablePriceSources(): Promise<string[]> {
+  const raw = await getConfig(AVAILABLE_PRICE_SOURCES_KEY);
+  if (raw !== undefined) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as string[];
+    } catch {
+      // fall through to save defaults
     }
-    result[token] = tokenCfg;
   }
+  await updateConfig(AVAILABLE_PRICE_SOURCES_KEY, JSON.stringify(AVAILABLE_PRICE_SOURCES), 'system');
+  return AVAILABLE_PRICE_SOURCES;
+}
 
-  return result;
+async function buildConfigData(): Promise<Record<string, unknown>> {
+  const [allConfigs, availableSources] = await Promise.all([getAllTokenConfigs(), getAvailablePriceSources()]);
+  const tokenConfigs: Record<string, unknown> = {};
+  for (const token of TOKENS) {
+    const tokenCfg = allConfigs[token.toUpperCase()] ?? {};
+    tokenConfigs[token] = {
+      buy: { source: 'binance', ...tokenCfg.buy },
+      sell: { source: 'binance', ...tokenCfg.sell },
+    };
+  }
+  return {
+    available_price_sources: availableSources,
+    configs: tokenConfigs,
+  };
 }
 
 export async function handleGetConfig(
-  req: FastifyRequest,
+  _req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const data = await getOrCreateTokenConfig(req.admin?.email ?? 'cms');
+  const data = await buildConfigData();
   reply.send({ success: true, data });
 }
 
@@ -128,28 +127,25 @@ export async function handlePatchCmsConfig(
   reply: FastifyReply,
 ) {
   const body = req.body ?? {};
-  const updates: Array<[string, number]> = [];
+  const changedBy = req.admin?.email ?? 'cms';
+  let hasUpdate = false;
 
   for (const token of TOKENS) {
     const tokenBody = body[token];
     if (!tokenBody) continue;
-    for (const field of FIELD_KEYS) {
-      if (tokenBody[field] !== undefined) {
-        updates.push([`${token}_${field}`, tokenBody[field]!]);
-      }
+    for (const side of ['buy', 'sell'] as const) {
+      const sideBody = tokenBody[side];
+      if (!sideBody || Object.keys(sideBody).length === 0) continue;
+      await upsertTokenConfig(token.toUpperCase(), side, sideBody, changedBy);
+      hasUpdate = true;
     }
   }
 
-  if (updates.length === 0) {
+  if (!hasUpdate) {
     return createErrorReply(reply, 'VALIDATION_ERROR', 'No config fields provided', req.id);
   }
 
-  const changedBy = req.admin?.email ?? 'cms';
-  for (const [key, val] of updates) {
-    await updateConfig(key, String(val), changedBy);
-  }
-
-  const data = await getOrCreateTokenConfig(changedBy);
+  const data = await buildConfigData();
   reply.send({ success: true, data });
 }
 

@@ -15,6 +15,8 @@ const registry: Record<string, PriceSourceFn> = {
   coingecko: coingeckoSource,
 };
 
+export const AVAILABLE_PRICE_SOURCES: string[] = Object.keys(registry);
+
 export function registerPriceSource(name: string, fn: PriceSourceFn): void {
   registry[name] = fn;
 }

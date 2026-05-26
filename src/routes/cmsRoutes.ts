@@ -67,14 +67,22 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     },
   }, handleCreateAdmin as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 
+  const tokenSideConfigSchema = {
+    type: 'object',
+    properties: {
+      spread: { type: 'number' },
+      fee_rate: { type: 'number' },
+      min_fee: { type: 'number' },
+      min_order_amount: { type: 'number' },
+      source: { type: 'string' },
+    },
+  };
+
   const tokenConfigSchema = {
     type: 'object',
     properties: {
-      spread_buy: { type: 'number' },
-      spread_sell: { type: 'number' },
-      fee_rate_buy: { type: 'number' },
-      fee_rate_sell: { type: 'number' },
-      min_fee: { type: 'number' },
+      buy: tokenSideConfigSchema,
+      sell: tokenSideConfigSchema,
     },
   };
 
@@ -85,22 +93,37 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
       data: {
         type: 'object',
         properties: {
-          usdc: tokenConfigSchema,
-          xlm: tokenConfigSchema,
+          available_price_sources: { type: 'array', items: { type: 'string' } },
+          configs: {
+            type: 'object',
+            properties: {
+              usdc: tokenConfigSchema,
+              xlm: tokenConfigSchema,
+            },
+          },
         },
       },
     },
   };
 
-  const tokenConfigBodySchema = {
+  const tokenSidePatchSchema = {
     type: 'object',
     additionalProperties: false,
     properties: {
-      spread_buy: { type: 'number' },
-      spread_sell: { type: 'number' },
-      fee_rate_buy: { type: 'number' },
-      fee_rate_sell: { type: 'number' },
+      spread: { type: 'number' },
+      fee_rate: { type: 'number' },
       min_fee: { type: 'number' },
+      min_order_amount: { type: 'number' },
+      source: { type: 'string' },
+    },
+  };
+
+  const tokenPatchSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      buy: tokenSidePatchSchema,
+      sell: tokenSidePatchSchema,
     },
   };
 
@@ -124,8 +147,8 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
         type: 'object',
         additionalProperties: false,
         properties: {
-          usdc: tokenConfigBodySchema,
-          xlm: tokenConfigBodySchema,
+          usdc: tokenPatchSchema,
+          xlm: tokenPatchSchema,
         },
       },
       response: { 200: configResponseSchema },

@@ -46,17 +46,23 @@ export async function coingeckoSource(asset: string, config: Record<string, unkn
     headers['x-cg-demo-api-key'] = apiKey;
   }
 
-  const url = `${COINGECKO_URL}?ids=${coingeckoId}&vs_currencies=vnd`;
-  const res = await fetch(url, { headers });
+  try {
+    const url = `${COINGECKO_URL}?ids=${coingeckoId}&vs_currencies=vnd`;
+    const res = await fetch(url, { headers });
 
-  if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
+    if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
 
-  const json = await res.json() as Record<string, { vnd: number }>;
-  const price = json[coingeckoId]?.vnd;
-  if (!price) throw new Error(`No price for ${coingeckoId} in CoinGecko response`);
+    const json = await res.json() as Record<string, { vnd: number }>;
+    const price = json[coingeckoId]?.vnd;
+    if (!price) throw new Error(`No price for ${coingeckoId} in CoinGecko response`);
 
-  const buy = price + spread;
-  const sell = price - spread;
-  priceCache.set(cacheKey, { buy, sell, fetchedAt: now });
-  return { buy, sell, cached: false };
+    const buy = price + spread;
+    const sell = price - spread;
+    priceCache.set(cacheKey, { buy, sell, fetchedAt: now });
+    return { buy, sell, cached: false };
+  } catch {
+    const fallback = priceCache.get(cacheKey);
+    if (fallback) return { ...fallback, cached: true };
+    throw new Error(`CoinGecko fetch failed for ${asset} and no cached data available`);
+  }
 }
