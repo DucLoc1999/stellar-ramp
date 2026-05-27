@@ -7,6 +7,7 @@ export interface TokenSideConfig {
   fee_rate: number;
   min_fee: number;
   min_order_amount: number;
+  max_order_amount: number;
   source?: string;
 }
 
@@ -119,6 +120,7 @@ const DEFAULT_TOKEN_CONFIG: TokenSideConfig = {
   fee_rate: 0.008,
   min_fee: 5000,
   min_order_amount: 1,
+  max_order_amount: 100,
 };
 
 const SUPPORTED_TOKENS = ['USDC', 'XLM'];
@@ -135,6 +137,7 @@ export async function getTokenSideConfigFromDb(token: string, side: TokenSide): 
       fee_rate: Number(parsed.fee_rate) || DEFAULT_TOKEN_CONFIG.fee_rate,
       min_fee: Number(parsed.min_fee) || DEFAULT_TOKEN_CONFIG.min_fee,
       min_order_amount: Number(parsed.min_order_amount) || DEFAULT_TOKEN_CONFIG.min_order_amount,
+      max_order_amount: Number(parsed.max_order_amount) || DEFAULT_TOKEN_CONFIG.max_order_amount,
       source,
     };
   } catch {

@@ -79,7 +79,7 @@ export async function handleCreateAdmin(
 const TOKENS = ['usdc', 'xlm'] as const;
 type Token = typeof TOKENS[number];
 
-type SidePatch = { spread?: number; fee_rate?: number; min_fee?: number; min_order_amount?: number; source?: string };
+type SidePatch = { spread?: number; fee_rate?: number; min_fee?: number; min_order_amount?: number; max_order_amount?: number; source?: string };
 type PatchBody = Partial<Record<Token, { buy?: SidePatch; sell?: SidePatch }>>;
 
 const AVAILABLE_PRICE_SOURCES_KEY = 'available_price_sources';

@@ -74,6 +74,7 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
       fee_rate: { type: 'number' },
       min_fee: { type: 'number' },
       min_order_amount: { type: 'number' },
+      max_order_amount: { type: 'number' },
       source: { type: 'string' },
     },
   };
@@ -114,6 +115,7 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
       fee_rate: { type: 'number' },
       min_fee: { type: 'number' },
       min_order_amount: { type: 'number' },
+      max_order_amount: { type: 'number' },
       source: { type: 'string' },
     },
   };
