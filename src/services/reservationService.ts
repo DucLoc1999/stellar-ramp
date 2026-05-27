@@ -145,8 +145,6 @@ export async function initReservationService(): Promise<void> {
     enableReadyCheck: true,
   });
   enabled = true;
-  await syncWalletBalances();
-  await syncVndBalance();
   await reconcileReservedTotalsFromDb();
   ready = true;
 }
@@ -154,22 +152,16 @@ export async function initReservationService(): Promise<void> {
 export function startReservationSchedulers(): NodeJS.Timeout[] {
   if (!isEnabled()) return [];
   const sweepMs = Number(process.env.RESERVATION_SWEEP_INTERVAL_MS || 5000);
-  const walletSyncMs = Number(process.env.RESERVATION_WALLET_SYNC_INTERVAL_MS || 15000);
   const reconcileMs = Number(process.env.RESERVATION_RECONCILE_INTERVAL_MS || 60000);
   const a = setInterval(() => {
     pruneExpired(Date.now()).catch((err) => console.error('[Reservation] pruneExpired failed:', err));
   }, sweepMs);
-  const b = setInterval(() => {
-    syncWalletBalances().catch((err) => console.error('[Reservation] syncWalletBalances failed:', err));
-    syncVndBalance().catch((err) => console.error('[Reservation] syncVndBalance failed:', err));
-  }, walletSyncMs);
   const c = setInterval(() => {
     reconcileReservedTotalsFromDb().catch((err) => console.error('[Reservation] reconcile failed:', err));
   }, reconcileMs);
   a.unref();
-  b.unref();
   c.unref();
-  return [a, b, c];
+  return [a, c];
 }
 
 export async function shutdownReservationService(): Promise<void> {
