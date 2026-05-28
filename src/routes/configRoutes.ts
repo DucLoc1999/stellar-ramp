@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { handleGetFees, handlePatchConfig } from '../controllers/configController';
+import { handleGetFees, handleGetTokenFees, handlePatchConfig } from '../controllers/configController';
 import { adminAuth } from '../middlewares/adminAuth';
 
 const tokenSideConfigSchema = {
@@ -10,7 +10,23 @@ const tokenSideConfigSchema = {
     fee_rate: { type: 'number' },
     min_fee: { type: 'number' },
     min_order_amount: { type: 'number' },
+    max_order_amount: { type: 'number' },
     source: { type: 'string' },
+  },
+} as const;
+
+const tokenFeeResponseSchema = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+    data: {
+      type: 'object',
+      properties: {
+        token: { type: 'string' },
+        buy: tokenSideConfigSchema,
+        sell: tokenSideConfigSchema,
+      },
+    },
   },
 } as const;
 
@@ -21,6 +37,23 @@ export async function configRoutes(app: FastifyInstance): Promise<void> {
       summary: 'Get current spreads and fee rates (global + token-specific)',
     },
   }, handleGetFees);
+
+  app.get('/fee/:token', {
+    schema: {
+      tags: ['Config'],
+      summary: 'Get all fee config for a token',
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          token: { type: 'string' },
+        },
+      },
+      response: {
+        200: tokenFeeResponseSchema,
+      },
+    },
+  }, handleGetTokenFees);
 
   app.patch('/', {
     preHandler: adminAuth,

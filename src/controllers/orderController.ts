@@ -63,6 +63,9 @@ export async function handleDeposit(
     if (errMsg === 'RESERVATION_NOT_READY') {
       return createErrorReply(reply, 'RESERVATION_NOT_READY', 'Liquidity reservation service is not ready', req.id);
     }
+    if (errMsg === 'MAX_ORDER_EXCEEDED') {
+      return createErrorReply(reply, 'MAX_ORDER_EXCEEDED', 'Order amount exceeds the maximum allowed limit', req.id);
+    }
     throw error;
   }
 }
@@ -85,6 +88,9 @@ export async function handleWithdrawal(
     }
     if (errMsg === 'RESERVATION_NOT_READY') {
       return createErrorReply(reply, 'RESERVATION_NOT_READY', 'Liquidity reservation service is not ready', req.id);
+    }
+    if (errMsg === 'MAX_ORDER_EXCEEDED') {
+      return createErrorReply(reply, 'MAX_ORDER_EXCEEDED', 'Order amount exceeds the maximum allowed limit', req.id);
     }
     throw error;
   }

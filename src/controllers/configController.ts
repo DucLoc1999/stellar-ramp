@@ -57,6 +57,29 @@ export async function handleGetFees(
   });
 }
 
+export async function handleGetTokenFees(
+  req: FastifyRequest<{ Params: { token: string } }>,
+  reply: FastifyReply,
+) {
+  const token = req.params?.token?.trim().toUpperCase();
+  const allTokenConfigs = await getAllTokenConfigs();
+  const tokenConfig = token ? allTokenConfigs[token] : undefined;
+
+  if (!token || !tokenConfig) {
+    reply.code(404).send({ success: false, error: 'Token config not found' });
+    return;
+  }
+
+  reply.send({
+    success: true,
+    data: {
+      token,
+      buy: tokenConfig.buy,
+      sell: tokenConfig.sell,
+    },
+  });
+}
+
 interface TokenSidePatch {
   spread?: number;
   fee_rate?: number;

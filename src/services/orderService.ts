@@ -4,7 +4,7 @@ import { getQuote } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
-import { getConfigNumber } from './configService';
+import { getConfigNumber, getTokenConfig } from './configService';
 import { executePayout, getAccountBalance } from './payoutService';
 import { emitOrderPaid } from './queueService';
 import { consumeReservation, releaseReservation, reserveForOrder, rollbackReservation } from './reservationService';
@@ -260,6 +260,10 @@ export async function createDeposit(
   }
 
   const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, tokenAddress, req.amount);
+  const maxOrder = await getTokenConfig(req.asset_code, 'buy', 'max_order_amount');
+  if (Number(req.amount) > maxOrder) {
+    throw new Error('MAX_ORDER_EXCEEDED');
+  }
   if (!trustlineCheck.exists) {
     console.error(`[OrderService] Trustline check failed for ${req.recipient}: trustline does not exist for ${req.asset_code} (issuer: ${tokenAddress})`);
     throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
@@ -351,6 +355,10 @@ export async function createWithdrawal(
     throw new Error('UNSUPPORTED_TOKEN');
   }
   const usdtAmount = Number(req.amount);
+  const maxOrder = await getTokenConfig(req.asset_code, 'sell', 'max_order_amount');
+  if (usdtAmount > maxOrder) {
+    throw new Error('MAX_ORDER_EXCEEDED');
+  }
   const quote = await getQuote('sell', usdtAmount, req.asset_code);
   const payment_code = generatePaymentCode();
   const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);

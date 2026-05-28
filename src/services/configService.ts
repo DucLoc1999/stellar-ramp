@@ -113,7 +113,7 @@ export function invalidateCache(): void {
 }
 
 export type TokenSide = 'buy' | 'sell';
-export type TokenKind = 'spread' | 'fee_rate' | 'min_fee' | 'min_order_amount';
+export type TokenKind = 'spread' | 'fee_rate' | 'min_fee' | 'min_order_amount' | 'max_order_amount';
 
 const DEFAULT_TOKEN_CONFIG: TokenSideConfig = {
   spread: 50,
@@ -197,6 +197,7 @@ async function getGlobalFallback(side: TokenSide, kind: TokenKind): Promise<numb
     fee_rate: { buy: 0.008, sell: 0.008 },
     min_fee: { buy: 5000, sell: 5000 },
     min_order_amount: { buy: 1, sell: 1 },
+    max_order_amount: { buy: 100, sell: 100 },
   };
   return globalDefaults[kind]?.[side] ?? 50;
 }
