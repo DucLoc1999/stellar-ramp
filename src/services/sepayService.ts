@@ -51,26 +51,17 @@ export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<
   }
 
   const currentState = order.order_state || 0;
-  if (currentState === OrderState.COMPLETED || currentState === OrderState.CANCELLED) {
-    console.log('[sepay-webhook] order already in final state:', currentState, 'for order:', paymentCode);
-    return;
-  }
-
-  if (order.payment_status !== 'pending') {
-    console.log('[sepay-webhook] order payment already received for order:', paymentCode);
+  if (currentState !== OrderState.CREATED) {
+    console.log('[sepay-webhook] order not in CREATED state:', currentState, 'for order:', paymentCode);
     return;
   }
 
   console.log('[sepay-webhook] net_vnd:', order.net_vnd, 'transferAmount:', payload.transferAmount);
   if (payload.transferAmount < Number(order.net_vnd)) return;
 
-  await db('orders')
-    .where({ payment_code: paymentCode })
-    .update({ last_webhook_id: String(webhookLogId) });
-
   await confirmPayment({
     payment_code: paymentCode,
-    sepay_transaction_id: String(payload.id),
     vnd_received: payload.transferAmount,
+    last_webhook_id: String(webhookLogId),
   });
 }

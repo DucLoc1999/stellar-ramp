@@ -3,6 +3,7 @@ import db from '../db';
 import { verifyAdminCredentials } from '../services/adminService';
 import { signJwt } from '../utils/jwt';
 import { createErrorReply } from '../middlewares/errorHandler';
+import { OrderState } from '../models/types';
 
 const ACCESS_TOKEN_TTL_SEC = Number(process.env.ADMIN_JWT_TTL_SEC ?? 60 * 60 * 12); // 12h
 
@@ -51,7 +52,7 @@ export async function handleGetStats(
   }
 
   const rows = await db('orders')
-    .where({ payment_status: 'payment_received' })
+    .whereIn('order_state', [OrderState.PROCESSING, OrderState.COMPLETED, OrderState.FAILED])
     .whereNotNull('payment_confirmed_at')
     .modify((qb) => {
       if (from) qb.andWhere('payment_confirmed_at', '>=', from);

@@ -72,6 +72,7 @@ describe('Admin workflow', () => {
       fee_rate: 0.008,
       fee_vnd: 2000,
       payment_status: 'payment_received',
+      order_state: 3,
       payment_confirmed_at: db.fn.now(),
     });
 

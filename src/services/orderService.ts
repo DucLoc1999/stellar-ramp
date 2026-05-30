@@ -52,7 +52,7 @@ interface OrderRow {
   va_number: string | null;
   transfer_content: string | null;
   amount: string | number | null;
-  sepay_transaction_id?: string | null;
+
   last_webhook_id?: string | null;
   bank_id: string | null;
   bank_account_name: string | null;
@@ -161,6 +161,51 @@ function firstInsertedId(result: unknown): number {
   return Number(result);
 }
 
+/**
+ * Derive payment_status from order_state for backward compatibility.
+ * Keeps payment_status in sync until the column is fully deprecated.
+ */
+function derivePaymentStatus(orderState: number): string {
+  if (orderState >= OrderState.PROCESSING) return 'payment_received';
+  return 'pending';
+}
+
+/**
+ * Centralized order state transition. ALL order state changes MUST go through
+ * this function to ensure payment_status stays in sync with order_state.
+ */
+async function transitionOrder(
+  orderId: number,
+  update: {
+    order_state: number;
+    processing_state?: number;
+    transaction_hash?: string | null;
+    last_webhook_id?: string;
+    error_message?: string;
+    vnd_received?: number;
+    payment_confirmed_at?: unknown;
+    cancelled_at?: unknown;
+    cancel_reason?: string | null;
+  }
+): Promise<OrderRow> {
+  const dbUpdate: Record<string, unknown> = {
+    ...update,
+    payment_status: derivePaymentStatus(update.order_state),
+  };
+
+  // Remove undefined values so we don't overwrite with NULL
+  for (const key of Object.keys(dbUpdate)) {
+    if (dbUpdate[key] === undefined) delete dbUpdate[key];
+  }
+
+  const updated = await db('orders')
+    .where({ id: orderId })
+    .update(dbUpdate)
+    .returning('*');
+
+  return firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
+}
+
 export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC', paymentCode?: string) {
   const quote = await getQuote('buy', usdt_amount, asset);
   const payment_code = paymentCode || generatePaymentCode();
@@ -190,11 +235,11 @@ export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC'
 
 export async function confirmPayment(params: {
   payment_code: string;
-  sepay_transaction_id: string;
   vnd_received: number;
+  last_webhook_id?: string;
 }) {
   const order = await db('orders')
-    .where({ payment_code: params.payment_code, payment_status: 'pending' })
+    .where({ payment_code: params.payment_code, order_state: OrderState.CREATED })
     .first();
 
   if (!order) return;
@@ -206,36 +251,37 @@ export async function confirmPayment(params: {
     return;
   }
 
-  await db('orders')
-    .where({ payment_code: params.payment_code, payment_status: 'pending' })
-    .update({
-      payment_status: 'payment_received',
-      sepay_transaction_id: params.sepay_transaction_id,
-      vnd_received: params.vnd_received,
-      payment_confirmed_at: db.fn.now(),
-    });
+  const oldState = order.order_state || 0;
+
+  await transitionOrder(order.id, {
+    order_state: OrderState.PROCESSING,
+    vnd_received: params.vnd_received,
+    payment_confirmed_at: db.fn.now(),
+    last_webhook_id: params.last_webhook_id,
+  });
 
   if (order.direction === 'buy') {
     await consumeReservation(params.payment_code);
   }
 
   if (order.direction === 'buy' && order.recipient) {
-    await db('orders')
-      .where({ payment_code: params.payment_code })
-      .update({ order_state: OrderState.PROCESSING });
     const usdtAmount = order.usdt_amount.toString();
     const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
     const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
     if (result.success && order.callback) {
-      fireCallback(order.callback, order.id, order.order_state, OrderState.COMPLETED, 10, 14, result.hash).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+      fireCallback(order.callback, order.id, oldState, OrderState.COMPLETED, 10, 14, result.hash).catch((err) => console.error('[OrderService] fireCallback failed:', err));
     } else if (!result.success && result.error) {
-      await db('orders').where({ id: order.id }).update({ order_state: OrderState.FAILED, processing_state: 15, error_message: result.error });
+      await transitionOrder(order.id, {
+        order_state: OrderState.FAILED,
+        processing_state: 15,
+        error_message: result.error,
+      });
     }
   }
 }
 
 export async function findPendingOrderByCode(payment_code: string) {
-  return db('orders').where({ payment_code, payment_status: 'pending' }).first();
+  return db('orders').where({ payment_code, order_state: OrderState.CREATED }).first();
 }
 
 export async function getOrderByCode(payment_code: string) {
@@ -446,7 +492,6 @@ export async function cancelExpiredOrders(): Promise<number> {
   // orders without expired_at whose created_at + ORDER_EXPIRY_MS has passed
   const expiredOrders: OrderRow[] = await db('orders')
     .where('order_state', OrderState.CREATED)
-    .where('payment_status', 'pending')
     .where(function (this: any) {
       this.where('expired_at', '<=', now)
         .orWhere(function (this: any) {
@@ -474,32 +519,24 @@ interface CancelResult {
 async function performCancel(order: OrderRow, reason?: string): Promise<CancelResult> {
   const currentState = order.order_state || 0;
 
-  if (currentState === OrderState.CANCELLED || currentState === OrderState.COMPLETED || currentState === OrderState.FAILED) {
+  // Only CREATED orders can be cancelled
+  if (currentState !== OrderState.CREATED) {
     return { error: 'CANCEL_NOT_ALLOWED' };
   }
 
-  if (order.sepay_transaction_id || order.payment_status === 'payment_received') {
+  // Block cancellation if payment webhook already received
+  if (order.last_webhook_id) {
     return { error: 'CANCEL_NOT_ALLOWED' };
   }
 
-  const idOrPaymentCode = order.payment_code ? { payment_code: order.payment_code } : { id: order.id };
-  const updatedRows = await db('orders')
-    .where(idOrPaymentCode)
-    .update({
-      order_state: OrderState.CANCELLED,
-      cancelled_at: db.fn.now(),
-      cancel_reason: reason || null,
-    })
-    .returning('*');
-  const updated = firstRow<OrderRow>(updatedRows as OrderRow | OrderRow[]);
+  const updated = await transitionOrder(order.id, {
+    order_state: OrderState.CANCELLED,
+    cancelled_at: db.fn.now(),
+    cancel_reason: reason || null,
+  });
 
-  if (order.direction === 'buy') {
-    await releaseReservation(order.payment_code);
-  }
-
-  if (order.direction === 'sell') {
-    await releaseReservation(order.payment_code);
-  }
+  // Release reservation for both buy and sell orders
+  await releaseReservation(order.payment_code);
 
   if (order.callback) {
     fireCallback(order.callback, order.id, currentState, OrderState.CANCELLED, order.processing_state || 0, order.processing_state || 0).catch((err) => console.error('[OrderService] fireCallback failed:', err));
@@ -537,7 +574,7 @@ export async function updateOrderState(paymentCode: string, newState: number | s
   const oldState = order.order_state || 0;
   const oldProcessingState = order.processing_state || 0;
   const stateNum = typeof newState === 'string' ? Number(newState) : newState;
-  await db('orders').where({ payment_code: paymentCode }).update({ order_state: stateNum });
+  await transitionOrder(order.id, { order_state: stateNum });
 
   if (order.callback) {
     fireCallback(order.callback, order.id, oldState, stateNum, oldProcessingState, oldProcessingState).catch((err) => console.error('[OrderService] fireCallback failed:', err));
@@ -643,15 +680,12 @@ export async function processSellPayment(params: {
   const oldState = order.order_state || 0;
   const oldProcessingState = order.processing_state || 0;
 
-  await db('orders')
-    .where({ id: order.id })
-    .update({
-      payment_status: 'payment_received',
-      order_state: OrderState.PROCESSING,
-      processing_state: ProcessingState.SELL_PAYMENT_RECEIVED,
-      transaction_hash: txHash,
-      last_webhook_id: String(webhookLogId),
-    });
+  await transitionOrder(order.id, {
+    order_state: OrderState.PROCESSING,
+    processing_state: ProcessingState.SELL_PAYMENT_RECEIVED,
+    transaction_hash: txHash,
+    last_webhook_id: String(webhookLogId),
+  });
 
   if (order.callback) {
     fireCallback(order.callback, order.id, oldState, OrderState.PROCESSING, oldProcessingState, ProcessingState.SELL_PAYMENT_RECEIVED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
@@ -661,13 +695,11 @@ export async function processSellPayment(params: {
     const balance = await getAccountBalance();
     if (!balance.success) {
       console.error(`[OrderService] VND balance check failed before payout: ${balance.error}`);
-      await db('orders')
-        .where({ id: order.id })
-        .update({
-          order_state: OrderState.FAILED,
-          processing_state: ProcessingState.SELL_PAYOUT_FAILED,
-          error_message: 'VND_BALANCE_CHECK_FAILED',
-        });
+      await transitionOrder(order.id, {
+        order_state: OrderState.FAILED,
+        processing_state: ProcessingState.SELL_PAYOUT_FAILED,
+        error_message: 'VND_BALANCE_CHECK_FAILED',
+      });
       if (order.callback) {
         fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
       }
@@ -676,13 +708,11 @@ export async function processSellPayment(params: {
     }
     if ((balance.availableBalance ?? 0) < Number(order.net_vnd)) {
       console.error(`[OrderService] Insufficient VND for payout: available=${balance.availableBalance}, needed=${order.net_vnd}`);
-      await db('orders')
-        .where({ id: order.id })
-        .update({
-          order_state: OrderState.FAILED,
-          processing_state: ProcessingState.SELL_PAYOUT_FAILED,
-          error_message: 'INSUFFICIENT_VND_BALANCE',
-        });
+      await transitionOrder(order.id, {
+        order_state: OrderState.FAILED,
+        processing_state: ProcessingState.SELL_PAYOUT_FAILED,
+        error_message: 'INSUFFICIENT_VND_BALANCE',
+      });
       if (order.callback) {
         fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
       }
@@ -705,12 +735,10 @@ export async function processSellPayment(params: {
   });
 
   if (payoutResult.success) {
-    await db('orders')
-      .where({ id: order.id })
-      .update({
-        order_state: OrderState.COMPLETED,
-        processing_state: ProcessingState.SELL_PAYOUT_COMPLETED,
-      });
+    await transitionOrder(order.id, {
+      order_state: OrderState.COMPLETED,
+      processing_state: ProcessingState.SELL_PAYOUT_COMPLETED,
+    });
 
     if (order.callback) {
       fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.COMPLETED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_COMPLETED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
@@ -725,13 +753,11 @@ export async function processSellPayment(params: {
 
     await consumeReservation(memo!);
   } else {
-    await db('orders')
-      .where({ id: order.id })
-      .update({
-        order_state: OrderState.FAILED,
-        processing_state: ProcessingState.SELL_PAYOUT_FAILED,
-        error_message: payoutResult.error || 'Payout failed',
-      });
+    await transitionOrder(order.id, {
+      order_state: OrderState.FAILED,
+      processing_state: ProcessingState.SELL_PAYOUT_FAILED,
+      error_message: payoutResult.error || 'Payout failed',
+    });
 
     if (order.callback) {
       fireCallback(order.callback, order.id, OrderState.PROCESSING, OrderState.FAILED, ProcessingState.SELL_PAYMENT_RECEIVED, ProcessingState.SELL_PAYOUT_FAILED).catch((err) => console.error('[OrderService] fireCallback failed:', err));
@@ -753,7 +779,6 @@ export async function bypassSellPayment(adminKey: string, orderId: number): Prom
   if (!order) return { error: 'ORDER_NOT_FOUND' };
   if (order.direction !== 'sell') return { error: 'NOT_SELL_ORDER' };
   if (order.order_state !== OrderState.CREATED) return { error: 'ORDER_NOT_ELIGIBLE' };
-  if (order.payment_status !== 'pending') return { error: 'PAYMENT_ALREADY_RECEIVED' };
 
   const result = await processSellPayment({
     txHash: `bypass-${Date.now()}`,
@@ -784,12 +809,8 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
   }
 
   const currentState = order.order_state || 0;
-  if (currentState === OrderState.COMPLETED || currentState === OrderState.FAILED || currentState === OrderState.CANCELLED) {
+  if (currentState !== OrderState.CREATED) {
     return { error: 'ORDER_NOT_ELIGIBLE' };
-  }
-
-  if (order.payment_status !== 'pending') {
-    return { error: 'PAYMENT_ALREADY_RECEIVED' };
   }
 
   const sepay_transaction_id = `bypass-${Date.now()}`;
@@ -802,10 +823,9 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
   try {
     await confirmPayment({
       payment_code: paymentCode,
-      sepay_transaction_id,
       vnd_received: Number(order.net_vnd),
+      last_webhook_id: String(webhookLogId),
     });
-    await db('orders').where({ id: orderId }).update({ last_webhook_id: String(webhookLogId) });
     return { success: true };
   } catch (err) {
     console.error(`[Bypass] confirmPayment failed for order ${orderId}:`, err);

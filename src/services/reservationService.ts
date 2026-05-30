@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Redis from 'ioredis';
 import db from '../db';
 import { getAccountBalance } from './payoutService';
+import { OrderState } from '../models/types';
 
 const MICRO_SCALE = 7;
 const RESERVATION_TTL_GRACE_MS = 5 * 60 * 1000;
@@ -333,7 +334,7 @@ export async function reconcileReservedTotalsFromDb(): Promise<void> {
   const buyRows = await db('orders')
     .select('asset_code')
     .sum<{ asset_code: string; total: string }[]>({ total: 'usdt_amount' })
-    .where({ direction: 'buy', payment_status: 'pending', order_state: 1 })
+    .where({ direction: 'buy', order_state: OrderState.CREATED })
     .andWhere('expired_at', '>', db.fn.now())
     .groupBy('asset_code');
 

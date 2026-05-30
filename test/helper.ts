@@ -61,8 +61,6 @@ async function setupTestTables() {
   await db.schema.createTable('orders', (t) => {
     t.increments('id');
     t.string('payment_code', 20).unique();
-    t.string('checkout_url', 500);
-    t.string('sepay_transaction_id', 100);
     t.bigInteger('vnd_received');
     t.timestamp('payment_confirmed_at');
     t.string('direction', 10).notNullable();
