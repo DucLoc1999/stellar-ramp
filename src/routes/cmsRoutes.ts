@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { handleCmsLogin, handleCreateAdmin, handleGetConfig, handlePatchCmsConfig, handleGetRates, handleGetAuditLog, handleChangePassword } from '../controllers/cmsController';
+import { handleCmsLogin, handleCreateAdmin, handleGetConfig, handlePatchCmsConfig, handleGetRates, handleGetAuditLog, handleChangePassword, handleGetBuyOrders, handleGetSellOrders } from '../controllers/cmsController';
 import { adminAuth } from '../middlewares/adminAuth';
 
 export async function cmsRoutes(app: FastifyInstance): Promise<void> {
@@ -208,6 +208,24 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleGetAuditLog as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
+
+  app.get('/orders/buy', {
+    preHandler: adminAuth,
+    schema: {
+      tags: ['CMS'],
+      summary: 'Get all buy orders',
+      security: [{ BearerAuth: [] }],
+    },
+  }, handleGetBuyOrders as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
+
+  app.get('/orders/sell', {
+    preHandler: adminAuth,
+    schema: {
+      tags: ['CMS'],
+      summary: 'Get all sell orders',
+      security: [{ BearerAuth: [] }],
+    },
+  }, handleGetSellOrders as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 
   app.patch('/admin/password', {
     preHandler: adminAuth,

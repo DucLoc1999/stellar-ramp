@@ -192,6 +192,78 @@ export async function handleGetAuditLog(
   reply.send(entries);
 }
 
+export async function handleGetBuyOrders(
+  _req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const rows = await db('orders')
+    .where('direction', 'buy')
+    .select(
+      'payment_code',
+      'usdt_amount',
+      'rate',
+      'net_vnd',
+      'updated_at',
+      'fee_vnd',
+      'order_state',
+      'transaction_hash',
+      'asset_code',
+      'recipient',
+    )
+    .orderBy('updated_at', 'desc');
+
+  const data = rows.map((r: any) => ({
+    updated_at: r.updated_at,
+    payment_code: r.payment_code,
+    transaction_hash: r.transaction_hash,
+    recipient: r.recipient,
+    usdc_amount: r.usdt_amount,
+    asset_code: r.asset_code,
+    rate: r.rate,
+    net_vnd: r.net_vnd,
+    fee_vnd: r.fee_vnd,
+    order_state: r.order_state,
+  }));
+
+  reply.send({ success: true, data });
+}
+
+export async function handleGetSellOrders(
+  _req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const rows = await db('orders')
+    .where('direction', 'sell')
+    .select(
+      'payment_code',
+      'usdt_amount',
+      'rate',
+      'net_vnd',
+      'updated_at',
+      'fee_vnd',
+      'order_state',
+      'transaction_hash',
+      'asset_code',
+      'payment_info',
+    )
+    .orderBy('updated_at', 'desc');
+
+  const data = rows.map((r: any) => ({
+    updated_at: r.updated_at,
+    payment_code: r.payment_code,
+    transaction_hash: r.transaction_hash,
+    usdc_amount: r.usdt_amount,
+    asset_code: r.asset_code,
+    rate: r.rate,
+    net_vnd: r.net_vnd,
+    fee_vnd: r.fee_vnd,
+    order_state: r.order_state,
+    payment_info: r.payment_info,
+  }));
+
+  reply.send({ success: true, data });
+}
+
 export async function handleGetRates(
   _req: FastifyRequest,
   reply: FastifyReply,
