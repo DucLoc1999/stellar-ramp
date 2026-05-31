@@ -42,16 +42,14 @@ export async function coingeckoSource(asset: string, config: Record<string, unkn
 
   const apiKey = cfg.api_key ?? process.env.COINGECKO_API_KEY;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (apiKey) {
-    headers['x-cg-demo-api-key'] = apiKey;
-  }
-
+  const url = `${COINGECKO_URL}?ids=${coingeckoId}&vs_currencies=vnd`;
   try {
-    const url = `${COINGECKO_URL}?ids=${coingeckoId}&vs_currencies=vnd`;
-    const res = await fetch(url, { headers });
-
+    var res = await fetch(url);
+    if (res.status == 429 && apiKey) {
+      headers['x-cg-demo-api-key'] = apiKey;
+      res = await fetch(url, { headers });
+    }
     if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
-
     const json = await res.json() as Record<string, { vnd: number }>;
     const price = json[coingeckoId]?.vnd;
     if (!price) throw new Error(`No price for ${coingeckoId} in CoinGecko response`);
