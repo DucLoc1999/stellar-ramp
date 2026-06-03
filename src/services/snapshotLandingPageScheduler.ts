@@ -19,19 +19,25 @@ interface UsdRateResponse {
   rates: { VND: number };
 }
 
-async function fetchBinancePrices(): Promise<{ buy: number | null; sell: number | null }> {
-  const opts = { asset: 'USDC', rows: 20, merchantCheck: true, publisherType: 'merchant', transAmount: '150000000' };
+const ASSETS = ['USDC', 'XLM'] as const;
 
-  const [buyPrices, sellPrices] = await Promise.all([
-    fetchBinanceP2POffers({ ...opts, tradeType: 'BUY' }),
-    fetchBinanceP2POffers({ ...opts, tradeType: 'SELL' }),
-  ]);
+async function fetchBinancePrices(asset: string): Promise<{ buy: number | null; sell: number | null }> {
+  const opts = { asset, rows: 20, merchantCheck: true, publisherType: 'merchant', transAmount: '150000000' };
+  try {
+    const [buyPrices, sellPrices] = await Promise.all([
+      fetchBinanceP2POffers({ ...opts, tradeType: 'BUY' }),
+      fetchBinanceP2POffers({ ...opts, tradeType: 'SELL' }),
+    ]);
 
-  const buy = buyPrices.length ? Math.min(...buyPrices) : null;
-  const sell = sellPrices.length ? Math.max(...sellPrices) : null;
-  return { buy, sell };
+    const buy = buyPrices.length ? Math.min(...buyPrices) : null;
+    const sell = sellPrices.length ? Math.max(...sellPrices) : null;
+    return { buy, sell };
+  } catch (err) {
+    // Preserve nulls when Binance returns no data or request fails
+    return { buy: null, sell: null };
+  }
 }
-async function fetchOkxPrices(): Promise<{ buy: number | null; sell: number | null }> {
+async function fetchOkxPrices(asset: string): Promise<{ buy: number | null; sell: number | null }> {
   const HANOI_PREMIUM = 412;
 
   function getSignature(secretKey: string, timestamp: string, method: string, path: string): string {
@@ -39,7 +45,7 @@ async function fetchOkxPrices(): Promise<{ buy: number | null; sell: number | nu
   }
 
   const timestamp = new Date().toISOString();
-  const path = '/api/v5/market/index-tickers?instId=USDC-USD';
+  const path = `/api/v5/market/index-tickers?instId=${asset}-USD`;
   const response = await fetch(`https://www.okx.com${path}`, {
     headers: {
       'OK-ACCESS-KEY': process.env.OKX_API_KEY!,
@@ -49,19 +55,19 @@ async function fetchOkxPrices(): Promise<{ buy: number | null; sell: number | nu
     },
   });
   const json = (await response.json()) as OkxIndexResponse;
-  const usdcPeg = parseFloat(json.data?.[0]?.idxPx || '1.0000');
+  const assetPeg = parseFloat(json.data?.[0]?.idxPx || '1.0000');
 
   const rateRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
   const rateJson = (await rateRes.json()) as UsdRateResponse;
   const bankRate = rateJson.rates.VND;
 
-  const marketMid = bankRate * usdcPeg + HANOI_PREMIUM;
+  const marketMid = bankRate * assetPeg + HANOI_PREMIUM;
   const buy = Math.round(marketMid * 1.0016);
   const sell = Math.round(marketMid * 0.9984);
   return { buy, sell };
 }
 
-async function fetchBybitPrices(): Promise<{ buy: number | null; sell: number | null }> {
+async function fetchBybitPrices(asset: string): Promise<{ buy: number | null; sell: number | null }> {
   const headers = {
     'Content-Type': 'application/json',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -73,7 +79,7 @@ async function fetchBybitPrices(): Promise<{ buy: number | null; sell: number | 
       method: 'POST',
       headers,
       body: JSON.stringify({
-        tokenId: 'USDC',
+        tokenId: asset,
         currencyId: 'VND',
         side: isBuying ? '1' : '0',
         size: '10',
@@ -92,27 +98,29 @@ async function fetchBybitPrices(): Promise<{ buy: number | null; sell: number | 
   return { buy, sell };
 }
 
-async function fetchOurPrices(): Promise<{ buy: number; sell: number }> {
-  const rate = await getRate();
+async function fetchOurPrices(asset: string): Promise<{ buy: number; sell: number }> {
+  const rate = await getRate(asset);
   return { buy: rate.buy_price, sell: rate.sell_price };
 }
 
-function recordPrices(exchange: Exchange, prices: { buy: number | null; sell: number | null }): void {
+function recordPrices(exchange: Exchange, asset: string, prices: { buy: number | null; sell: number | null }): void {
   if (prices.buy !== null) {
-    insertSnapshot({ exchange, trade_type: 'buy', asset: 'USDC', fiat: 'VND', best_price: prices.buy });
+    insertSnapshot({ exchange, trade_type: 'buy', asset, fiat: 'VND', best_price: prices.buy });
   }
   if (prices.sell !== null) {
-    insertSnapshot({ exchange, trade_type: 'sell', asset: 'USDC', fiat: 'VND', best_price: prices.sell });
+    insertSnapshot({ exchange, trade_type: 'sell', asset, fiat: 'VND', best_price: prices.sell });
   }
 }
 
 async function tick(): Promise<void> {
-  const results = await Promise.allSettled([
-    fetchBinancePrices().then((p) => recordPrices('binance', p)),
-    fetchOkxPrices().then((p) => recordPrices('okx', p)),
-    fetchBybitPrices().then((p) => recordPrices('bybit', p)),
-    fetchOurPrices().then((p) => recordPrices('our', p)),
-  ]);
+  const results = await Promise.allSettled(
+    ASSETS.flatMap((asset) => [
+      fetchBinancePrices(asset).then((p) => recordPrices('binance', asset, p)),
+      fetchOkxPrices(asset).then((p) => recordPrices('okx', asset, p)),
+      fetchBybitPrices(asset).then((p) => recordPrices('bybit', asset, p)),
+      fetchOurPrices(asset).then((p) => recordPrices('our', asset, p)),
+    ])
+  );
 
   for (const r of results) {
     if (r.status === 'rejected') {

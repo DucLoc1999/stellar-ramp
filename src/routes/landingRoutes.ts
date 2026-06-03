@@ -4,23 +4,39 @@ import { getRate, getMinFee } from '../services/priceService';
 
 async function handleAllRates(_request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const exchanges: Exchange[] = ['binance', 'okx', 'bybit'];
-  const p2p: Record<string, { bestBuyPrice: number | null; bestSellPrice: number | null }> = {};
+  const assets = ['USDC', 'XLM'] as const;
+
+  const p2p: Record<string, Record<string, { bestBuyPrice: number | null; bestSellPrice: number | null }>> = {};
   for (const ex of exchanges) {
-    p2p[ex] = {
-      bestBuyPrice: getLatestPrice(ex, 'buy'),
-      bestSellPrice: getLatestPrice(ex, 'sell'),
-    };
+    p2p[ex] = {};
+    for (const asset of assets) {
+      p2p[ex][asset.toLowerCase()] = {
+        bestBuyPrice: getLatestPrice(ex, 'buy', asset),
+        bestSellPrice: getLatestPrice(ex, 'sell', asset),
+      };
+    }
   }
 
-  const rate = await getRate('USDC');
-  const minFee = await getMinFee('USDC');
+  const [usdcRate, xlmRate] = await Promise.all([getRate('USDC'), getRate('XLM')]);
+  const [usdcMinFee, xlmMinFee] = await Promise.all([getMinFee('USDC'), getMinFee('XLM')]);
+
   const our = {
-    buy: rate.buy_price,
-    sell: rate.sell_price,
-    fee_rate_buy: rate.fee_rate_buy,
-    fee_rate_sell: rate.fee_rate_sell,
-    min_fee_vnd: minFee,
-    created_at: rate.updated_at,
+    usdc: {
+      buy: usdcRate.buy_price,
+      sell: usdcRate.sell_price,
+      fee_rate_buy: usdcRate.fee_rate_buy,
+      fee_rate_sell: usdcRate.fee_rate_sell,
+      min_fee_vnd: usdcMinFee,
+      created_at: usdcRate.updated_at,
+    },
+    xlm: {
+      buy: xlmRate.buy_price,
+      sell: xlmRate.sell_price,
+      fee_rate_buy: xlmRate.fee_rate_buy,
+      fee_rate_sell: xlmRate.fee_rate_sell,
+      min_fee_vnd: xlmMinFee,
+      created_at: xlmRate.updated_at,
+    },
   };
 
   return reply.send({ ...p2p, our });
@@ -49,39 +65,91 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
             binance: {
               type: 'object',
               properties: {
-                bestBuyPrice: { type: ['number', 'null'] },
-                bestSellPrice: { type: ['number', 'null'] },
+                usdc: {
+                  type: 'object',
+                  properties: {
+                    bestBuyPrice: { type: ['number', 'null'] },
+                    bestSellPrice: { type: ['number', 'null'] },
+                  },
+                },
+                xlm: {
+                  type: 'object',
+                  properties: {
+                    bestBuyPrice: { type: ['number', 'null'] },
+                    bestSellPrice: { type: ['number', 'null'] },
+                  },
+                },
               },
             },
             okx: {
               type: 'object',
               properties: {
-                bestBuyPrice: { type: ['number', 'null'] },
-                bestSellPrice: { type: ['number', 'null'] },
+                usdc: {
+                  type: 'object',
+                  properties: {
+                    bestBuyPrice: { type: ['number', 'null'] },
+                    bestSellPrice: { type: ['number', 'null'] },
+                  },
+                },
+                xlm: {
+                  type: 'object',
+                  properties: {
+                    bestBuyPrice: { type: ['number', 'null'] },
+                    bestSellPrice: { type: ['number', 'null'] },
+                  },
+                },
               },
             },
             bybit: {
               type: 'object',
               properties: {
-                bestBuyPrice: { type: ['number', 'null'] },
-                bestSellPrice: { type: ['number', 'null'] },
+                usdc: {
+                  type: 'object',
+                  properties: {
+                    bestBuyPrice: { type: ['number', 'null'] },
+                    bestSellPrice: { type: ['number', 'null'] },
+                  },
+                },
+                xlm: {
+                  type: 'object',
+                  properties: {
+                    bestBuyPrice: { type: ['number', 'null'] },
+                    bestSellPrice: { type: ['number', 'null'] },
+                  },
+                },
               },
             },
             our: {
               type: 'object',
               properties: {
-                buy: { type: 'number' },
-                sell: { type: 'number' },
-                fee_rate_buy: { type: 'number' },
-                fee_rate_sell: { type: 'number' },
-                min_fee_vnd: { type: 'number' },
-                created_at: { type: 'string' },
+                usdc: {
+                  type: 'object',
+                  properties: {
+                    buy: { type: 'number' },
+                    sell: { type: 'number' },
+                    fee_rate_buy: { type: 'number' },
+                    fee_rate_sell: { type: 'number' },
+                    min_fee_vnd: { type: 'number' },
+                    created_at: { type: 'string' },
+                  },
+                },
+                xlm: {
+                  type: 'object',
+                  properties: {
+                    buy: { type: 'number' },
+                    sell: { type: 'number' },
+                    fee_rate_buy: { type: 'number' },
+                    fee_rate_sell: { type: 'number' },
+                    min_fee_vnd: { type: 'number' },
+                    created_at: { type: 'string' },
+                  },
+                },
               },
             },
           },
         },
       },
-    },
+    } as any,
   }, handleAllRates);
 
   app.get('/p2p-history', {
@@ -94,6 +162,6 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
           days: { type: 'integer', minimum: 1, maximum: 30 },
         },
       },
-    },
+    } as any,
   }, handleAllHistory);
 }

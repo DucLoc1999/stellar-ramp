@@ -20,6 +20,7 @@ export interface HistoryRow {
 
 const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.resolve('p2p_prices.db');
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const P2P_PRICE_MAX_AGE_MS = Number(process.env.P2P_PRICE_MAX_AGE_MS || 120_000);
 
 const db = new DatabaseSync(DB_PATH);
 
@@ -52,6 +53,10 @@ if (isEmpty) {
     bybit:   { buyBase: 25_680, sellBase: 25_880, drift: 320 },
     our:     { buyBase: 25_600, sellBase: 25_950, drift: 300 },
   };
+  const MOCK_ASSETS = {
+    USDC: { buyBase: 25_700, sellBase: 25_900, drift: 300 },
+    XLM:  { buyBase: 7_500, sellBase: 7_700, drift: 120 },
+  } as const;
   const now = Date.now();
 
   for (let day = 29; day >= 0; day--) {
@@ -61,6 +66,9 @@ if (isEmpty) {
       const { buyBase, sellBase, drift } = MOCK_CONFIG[exchange];
       insert.run(exchange, 'buy', 'USDC', 'VND', Math.round(buyBase + noise * drift), ts);
       insert.run(exchange, 'sell', 'USDC', 'VND', Math.round(sellBase + noise * drift), ts);
+      const xlm = MOCK_ASSETS.XLM;
+      insert.run(exchange, 'buy', 'XLM', 'VND', Math.round(xlm.buyBase + noise * xlm.drift), ts);
+      insert.run(exchange, 'sell', 'XLM', 'VND', Math.round(xlm.sellBase + noise * xlm.drift), ts);
     }
   }
 
@@ -71,6 +79,9 @@ if (isEmpty) {
       const { buyBase, sellBase, drift } = MOCK_CONFIG[exchange];
       insert.run(exchange, 'buy', 'USDC', 'VND', Math.round(buyBase + noise * drift * 0.3), ts);
       insert.run(exchange, 'sell', 'USDC', 'VND', Math.round(sellBase + noise * drift * 0.3), ts);
+      const xlm = MOCK_ASSETS.XLM;
+      insert.run(exchange, 'buy', 'XLM', 'VND', Math.round(xlm.buyBase + noise * xlm.drift * 0.3), ts);
+      insert.run(exchange, 'sell', 'XLM', 'VND', Math.round(xlm.sellBase + noise * xlm.drift * 0.3), ts);
     }
   }
 }
@@ -83,7 +94,7 @@ export function insertSnapshot(snapshot: P2PSnapshot): void {
   db.prepare('DELETE FROM p2p_prices WHERE created_at < ?').run(now - THIRTY_DAYS_MS);
 }
 
-export function getHistory(exchange: Exchange, days: number): HistoryRow[] {
+export function getHistory(exchange: Exchange, days: number, asset: string = 'USDC'): HistoryRow[] {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const bucketMs = days === 1 ? 60_000 : 86_400_000;
   return db.prepare(`
@@ -92,18 +103,21 @@ export function getHistory(exchange: Exchange, days: number): HistoryRow[] {
       MAX(CASE WHEN trade_type = 'buy'  THEN best_price END) AS buy,
       MAX(CASE WHEN trade_type = 'sell' THEN best_price END) AS sell
     FROM p2p_prices
-    WHERE exchange = ? AND created_at >= ?
+    WHERE exchange = ? AND asset = ? AND created_at >= ?
     GROUP BY created_at / ${bucketMs}
     ORDER BY created_at ASC
-  `).all(exchange, cutoff) as unknown as HistoryRow[];
+  `).all(exchange, asset, cutoff) as unknown as HistoryRow[];
 }
 
-export function getLatestPrice(exchange: Exchange, tradeType: TradeType): number | null {
+export function getLatestPrice(exchange: Exchange, tradeType: TradeType, asset: string = 'USDC'): number | null {
   const row = db.prepare(`
-    SELECT best_price FROM p2p_prices
-    WHERE exchange = ? AND trade_type = ?
+    SELECT best_price, created_at FROM p2p_prices
+    WHERE exchange = ? AND trade_type = ? AND asset = ?
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(exchange, tradeType) as { best_price: number } | undefined;
-  return row?.best_price ?? null;
+  `).get(exchange, tradeType, asset) as { best_price: number; created_at: number } | undefined;
+
+  if (!row) return null;
+  if (Date.now() - row.created_at > P2P_PRICE_MAX_AGE_MS) return null;
+  return row.best_price;
 }
