@@ -128,6 +128,12 @@
     "ewallets": "7+ ví điện tử",
     "noHistory": "Chưa có dữ liệu lịch sử"
   },
+  "marketComparison": "So sánh thị trường",
+  "bestRate": "Tỷ giá tốt nhất",
+  "lowestFee": "Phí thấp nhất",
+  "ourRate": "Stellar Ramp",
+  "buyNow": "Mua ngay",
+  "na": "N/A",
   "feedback": {
     "eyebrow": "PHẢN HỒI NGƯỜI DÙNG",
     "title": "Được cộng đồng OTC tin tưởng",

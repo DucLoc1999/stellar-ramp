@@ -128,6 +128,12 @@
     "ewallets": "7+ e-wallets",
     "noHistory": "No historical data yet"
   },
+  "marketComparison": "Market Comparison",
+  "bestRate": "Best Rate",
+  "lowestFee": "Lowest Fee",
+  "ourRate": "Stellar Ramp",
+  "buyNow": "Buy Now",
+  "na": "N/A",
   "feedback": {
     "eyebrow": "USER FEEDBACK",
     "title": "Trusted by the OTC community",
