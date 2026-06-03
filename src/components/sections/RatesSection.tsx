@@ -6,8 +6,13 @@ import {
   ChartLegend,
   ChartLegendContent,
 } from "../ui/chart";
-import { AllRatesResponse, AllHistoryResponse, P2PHistoryPoint } from "@shared/api";
+import {
+  AllRatesResponse,
+  AllHistoryResponse,
+  P2PHistoryPoint,
+} from "@shared/api";
 import { SectionHeading } from "./SectionHeading";
+import { useTranslation } from "react-i18next";
 
 const API_BASE = import.meta.env.VITE_BASE_URL || "http://localhost:3001";
 const CACHE_TTL = 60_000;
@@ -77,7 +82,7 @@ function makeTooltip(config: AnyConfig) {
   }) {
     if (!active || !payload?.length) return null;
     return (
-      <div className="rounded-lg border border-border bg-background/95 px-3 py-2.5 text-xs shadow-xl backdrop-blur-sm min-w-[11rem]">
+      <div className="rounded-lg border border-border bg-background/95 px-3 py-2.5 text-xs shadow-xl backdrop-blur-sm min-w-44">
         <p className="mb-2 font-semibold text-foreground/60 tracking-wide">
           {label}
         </p>
@@ -355,11 +360,15 @@ function LiveCountdown() {
 }
 
 export const RatesSection = () => {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<RateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<7 | 30>(7);
-  const [historyData, setHistoryData] = useState<AllHistoryResponse | null>(null);
+  const [historyData, setHistoryData] = useState<AllHistoryResponse | null>(
+    null,
+  );
+  const [selectedAsset, setSelectedAsset] = useState<string>("USDC");
   const isFirstLoad = useRef(true);
 
   async function load() {
@@ -370,7 +379,9 @@ export const RatesSection = () => {
       await new Promise((r) => setTimeout(r, 150));
     }
 
-    const rates = await fetchCached<AllRatesResponse>(`${API_BASE}/landing/p2p-rates`);
+    const rates = await fetchCached<AllRatesResponse>(
+      `${API_BASE}/landing/p2p-rates`,
+    );
 
     setRows([
       {
@@ -378,8 +389,17 @@ export const RatesSection = () => {
         network: "Stellar Ramp",
         subLabel: "Stellar",
         logo: "/exchanges/stellarRamp.png",
-        buy: rates?.our.buy ?? null,
-        sell: rates?.our.sell ?? null,
+        buy: rates?.our.usdc.buy ?? null,
+        sell: rates?.our.usdc.sell ?? null,
+        isFeatured: true,
+      },
+      {
+        asset: "XLM",
+        network: "Stellar Ramp",
+        subLabel: "Stellar",
+        logo: "/exchanges/stellarRamp.png",
+        buy: rates?.our.xlm.buy ?? null,
+        sell: rates?.our.xlm.sell ?? null,
         isFeatured: true,
       },
       {
@@ -387,8 +407,17 @@ export const RatesSection = () => {
         network: "Binance P2P",
         subLabel: "BSC (BEP20)",
         logo: "/exchanges/binance.png",
-        buy: rates?.binance.bestBuyPrice ?? null,
-        sell: rates?.binance.bestSellPrice ?? null,
+        buy: rates?.binance.usdc.bestBuyPrice ?? null,
+        sell: rates?.binance.usdc.bestSellPrice ?? null,
+        isCompetitor: true,
+      },
+      {
+        asset: "XLM",
+        network: "Binance P2P",
+        subLabel: "Binance",
+        logo: "/exchanges/binance.png",
+        buy: rates?.binance.xlm.bestBuyPrice ?? null,
+        sell: rates?.binance.xlm.bestSellPrice ?? null,
         isCompetitor: true,
       },
       {
@@ -396,8 +425,17 @@ export const RatesSection = () => {
         network: "OKX P2P",
         subLabel: "OKX",
         logo: "/exchanges/okx.png",
-        buy: rates?.okx.bestBuyPrice ?? null,
-        sell: rates?.okx.bestSellPrice ?? null,
+        buy: rates?.okx.usdc.bestBuyPrice ?? null,
+        sell: rates?.okx.usdc.bestSellPrice ?? null,
+        isCompetitor: true,
+      },
+      {
+        asset: "XLM",
+        network: "OKX P2P",
+        subLabel: "OKX",
+        logo: "/exchanges/okx.png",
+        buy: rates?.okx.xlm.bestBuyPrice ?? null,
+        sell: rates?.okx.xlm.bestSellPrice ?? null,
         isCompetitor: true,
       },
       {
@@ -405,8 +443,17 @@ export const RatesSection = () => {
         network: "Bybit P2P",
         subLabel: "Bybit",
         logo: "/exchanges/bybit.png",
-        buy: rates?.bybit.bestBuyPrice ?? null,
-        sell: rates?.bybit.bestSellPrice ?? null,
+        buy: rates?.bybit.usdc.bestBuyPrice ?? null,
+        sell: rates?.bybit.usdc.bestSellPrice ?? null,
+        isCompetitor: true,
+      },
+      {
+        asset: "XLM",
+        network: "Bybit P2P",
+        subLabel: "Bybit",
+        logo: "/exchanges/bybit.png",
+        buy: rates?.bybit.xlm.bestBuyPrice ?? null,
+        sell: rates?.bybit.xlm.bestSellPrice ?? null,
         isCompetitor: true,
       },
     ]);
@@ -415,7 +462,9 @@ export const RatesSection = () => {
   }
 
   async function loadHistory() {
-    const data = await fetchCached<AllHistoryResponse>(`${API_BASE}/landing/p2p-history?days=${range}`);
+    const data = await fetchCached<AllHistoryResponse>(
+      `${API_BASE}/landing/p2p-history?days=${range}`,
+    );
     if (data) setHistoryData(data);
   }
 
@@ -431,15 +480,32 @@ export const RatesSection = () => {
     return () => clearInterval(interval);
   }, [range]);
 
-  const ROWS_COUNT = 4;
+  const ROWS_COUNT = 6;
+
+  const visibleRows = rows.filter(
+    (row) => row.buy !== null || row.sell !== null,
+  );
+
+  const assets = Array.from(new Set(visibleRows.map((r) => r.asset)));
+  useEffect(() => {
+    if (assets.length > 0 && !assets.includes(selectedAsset)) {
+      setSelectedAsset(assets[0]);
+    }
+  }, [assets.join(","), selectedAsset]);
+
+  const filteredRows = visibleRows.filter((r) => r.asset === selectedAsset);
 
   const bestBuy =
-    rows.length > 0 ? Math.max(...rows.map((r) => r.buy ?? -Infinity)) : null;
+    filteredRows.length > 0
+      ? Math.max(...filteredRows.map((r) => r.buy ?? -Infinity))
+      : null;
   const bestSell =
-    rows.length > 0 ? Math.min(...rows.map((r) => r.sell ?? Infinity)) : null;
+    filteredRows.length > 0
+      ? Math.min(...filteredRows.map((r) => r.sell ?? Infinity))
+      : null;
 
-  const competitorRows = rows.filter((r) => r.isCompetitor);
-  const ourRow = rows.find((r) => r.isFeatured);
+  const competitorRows = filteredRows.filter((r) => r.isCompetitor);
+  const ourRows = filteredRows.filter((r) => r.isFeatured);
 
   return (
     <section className="relative bg-slate-50 dark:bg-slate-900 py-24">
@@ -453,6 +519,22 @@ export const RatesSection = () => {
             <>Live prices from the most popular P2P platforms in Vietnam.</>
           }
         />
+        <div className="flex items-center justify-end gap-3">
+          <label className="text-xs text-slate-600 dark:text-slate-400 leading-none">
+            {t("rates.asset")}
+          </label>
+          <select
+            value={selectedAsset}
+            onChange={(e) => setSelectedAsset(e.target.value)}
+            className="rounded-md border border-border px-3 py-1.5 text-sm h-9"
+          >
+            {assets.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Rate table — desktop */}
         <div className="hidden sm:block">
@@ -486,21 +568,28 @@ export const RatesSection = () => {
                 ))
               ) : (
                 <>
-                  {/* Our featured row */}
-                  {ourRow && (
-                    <tr className="border-b border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20">
+                  {/* Our featured rows */}
+                  {ourRows.map((ourRow) => (
+                    <tr
+                      key={`${ourRow.asset}-${ourRow.network}`}
+                      className="border-b border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20"
+                    >
                       <td className="pl-2 pr-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-slate-800 overflow-hidden shrink-0 ring-2 ring-slate-200 dark:ring-slate-600">
-                              <img src={ourRow.logo} alt={ourRow.network} className="h-full w-full object-contain" />
-                            </div>
+                            <img
+                              src={ourRow.logo}
+                              alt={ourRow.network}
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-slate-900 dark:text-slate-100">
                                 {ourRow.asset}
                               </span>
                               <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white leading-none">
-                                Stellar Ramp
+                                {t("rates.ourRate")}
                               </span>
                             </div>
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -510,7 +599,9 @@ export const RatesSection = () => {
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <div className={`inline-flex flex-col items-end transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
+                        <div
+                          className={`inline-flex flex-col items-end transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}
+                        >
                           <span className="font-bold text-emerald-600 text-base tabular-nums">
                             {ourRow.buy !== null ? (
                               `${fmt(ourRow.buy)} ₫`
@@ -524,13 +615,15 @@ export const RatesSection = () => {
                             bestBuy !== null &&
                             ourRow.buy === bestBuy && (
                               <span className="mt-0.5 text-[10px] font-bold text-emerald-500 uppercase tracking-wide">
-                                Best Rate
+                                {t("rates.bestRate")}
                               </span>
                             )}
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <div className={`inline-flex flex-col items-end transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
+                        <div
+                          className={`inline-flex flex-col items-end transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}
+                        >
                           <span className="font-bold text-red-500 text-base tabular-nums">
                             {ourRow.sell !== null ? (
                               `${fmt(ourRow.sell)} ₫`
@@ -544,7 +637,7 @@ export const RatesSection = () => {
                             bestSell !== null &&
                             ourRow.sell === bestSell && (
                               <span className="mt-0.5 text-[10px] font-bold text-emerald-500 uppercase tracking-wide">
-                                Lowest Fee
+                                {t("rates.lowestFee")}
                               </span>
                             )}
                         </div>
@@ -556,63 +649,75 @@ export const RatesSection = () => {
                           rel="noopener noreferrer"
                           className="inline-flex items-center justify-center rounded-lg bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 px-4 py-2 text-xs font-bold text-white transition-colors shadow-sm shadow-emerald-200 dark:shadow-emerald-900/40"
                         >
-                          Buy Now
+                          {t("rates.buyNow")}
                         </a>
                       </td>
                     </tr>
-                  )}
-
-                  {/* Competitor group header */}
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="px-2 pt-5 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500"
-                    >
-                      Market Comparison
-                    </td>
-                  </tr>
-
-                  {competitorRows.map((row, i) => (
-                    <tr
-                      key={`${row.asset}-${row.network}`}
-                      className={`border-b border-slate-100 dark:border-slate-800 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${i === competitorRows.length - 1 ? "border-b-0" : ""}`}
-                    >
-                      <td className="pl-2 pr-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-slate-800 overflow-hidden shrink-0 ring-2 ring-slate-200 dark:ring-slate-600">
-                              <img src={row.logo} alt={row.network} className="h-full w-full object-contain" />
-                            </div>
-                          <div>
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">
-                              {row.network}
-                            </span>
-                            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                              {row.subLabel}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className={`px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
-                        {row.buy !== null ? (
-                          `${fmt(row.buy)} ₫`
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-600 text-xs font-medium">
-                            N/A
-                          </span>
-                        )}
-                      </td>
-                      <td className={`px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
-                        {row.sell !== null ? (
-                          `${fmt(row.sell)} ₫`
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-600 text-xs font-medium">
-                            N/A
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 w-36" />
-                    </tr>
                   ))}
+
+                  {competitorRows.length > 0 && (
+                    <>
+                      {/* Competitor group header */}
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-2 pt-5 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500"
+                        >
+                          Market Comparison
+                        </td>
+                      </tr>
+
+                      {competitorRows.map((row, i) => (
+                        <tr
+                          key={`${row.asset}-${row.network}`}
+                          className={`border-b border-slate-100 dark:border-slate-800 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${i === competitorRows.length - 1 ? "border-b-0" : ""}`}
+                        >
+                          <td className="pl-2 pr-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-slate-800 overflow-hidden shrink-0 ring-2 ring-slate-200 dark:ring-slate-600">
+                                <img
+                                  src={row.logo}
+                                  alt={row.network}
+                                  className="h-full w-full object-contain"
+                                />
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                  {row.network}
+                                </span>
+                                <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                                  {row.subLabel}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td
+                            className={`px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}
+                          >
+                            {row.buy !== null ? (
+                              `${fmt(row.buy)} ₫`
+                            ) : (
+                              <span className="text-slate-400 dark:text-slate-600 text-xs font-medium">
+                                N/A
+                              </span>
+                            )}
+                          </td>
+                          <td
+                            className={`px-5 py-4 text-right font-semibold text-slate-600 dark:text-slate-400 tabular-nums transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}
+                          >
+                            {row.sell !== null ? (
+                              `${fmt(row.sell)} ₫`
+                            ) : (
+                              <span className="text-slate-400 dark:text-slate-600 text-xs font-medium">
+                                N/A
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 w-36" />
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </>
               )}
             </tbody>
@@ -636,7 +741,7 @@ export const RatesSection = () => {
                   <div className="h-4 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
                 </div>
               ))
-            : rows.map((row) => (
+            : visibleRows.map((row) => (
                 <div
                   key={`${row.asset}-${row.network}`}
                   className={`rounded-2xl border p-5 ${
@@ -650,7 +755,11 @@ export const RatesSection = () => {
                       <div
                         className={`flex h-9 w-9 items-center justify-center rounded-full overflow-hidden ring-2 ring-slate-200 dark:ring-slate-600 bg-white dark:bg-slate-800`}
                       >
-                        <img src={row.logo} alt={row.network} className="h-full w-full object-contain" />
+                        <img
+                          src={row.logo}
+                          alt={row.network}
+                          className="h-full w-full object-contain"
+                        />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
@@ -676,7 +785,9 @@ export const RatesSection = () => {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600/70 mb-1">
                         Buy
                       </p>
-                      <p className={`font-bold text-emerald-600 tabular-nums text-sm transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
+                      <p
+                        className={`font-bold text-emerald-600 tabular-nums text-sm transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}
+                      >
                         {row.buy !== null ? (
                           `${fmt(row.buy)} ₫`
                         ) : (
@@ -697,7 +808,9 @@ export const RatesSection = () => {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-red-500/70 mb-1">
                         Sell
                       </p>
-                      <p className={`font-bold text-red-500 tabular-nums text-sm transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}>
+                      <p
+                        className={`font-bold text-red-500 tabular-nums text-sm transition-opacity duration-300 ${refreshing ? "opacity-0" : "opacity-100"}`}
+                      >
                         {row.sell !== null ? (
                           `${fmt(row.sell)} ₫`
                         ) : (
@@ -790,8 +903,8 @@ export const RatesSection = () => {
           </div>
 
           <div className="relative w-full flex justify-center lg:justify-end">
-            <div className="relative bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm p-4 sm:p-8 rounded-[2rem] border border-slate-200/60 dark:border-slate-700/60 shadow-inner w-full max-w-[600px]">
-              <div className="absolute inset-0 rounded-[2rem] shadow-[inset_0_0_20px_rgba(0,0,0,0.02)] border border-white/80" />
+            <div className="relative bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm p-4 sm:p-8 rounded-4xl border border-slate-200/60 dark:border-slate-700/60 shadow-inner w-full max-w-150">
+              <div className="absolute inset-0 rounded-4xl shadow-[inset_0_0_20px_rgba(0,0,0,0.02)] border border-white/80" />
               <img
                 src="/payment_methods_logos.png"
                 alt="50+ Vietnamese Banks and E-wallets"

@@ -3,6 +3,11 @@ export interface P2PRate {
   bestSellPrice: number | null;
 }
 
+export interface P2PExchangeRates {
+  usdc: P2PRate;
+  xlm: P2PRate;
+}
+
 export interface OurRate {
   buy: number;
   sell: number;
@@ -12,11 +17,16 @@ export interface OurRate {
   created_at: string;
 }
 
+export interface OurRates {
+  usdc: OurRate;
+  xlm: OurRate;
+}
+
 export interface AllRatesResponse {
-  binance: P2PRate;
-  okx: P2PRate;
-  bybit: P2PRate;
-  our: OurRate;
+  binance: P2PExchangeRates;
+  okx: P2PExchangeRates;
+  bybit: P2PExchangeRates;
+  our: OurRates;
 }
 
 export interface P2PHistoryPoint {

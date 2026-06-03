@@ -33,11 +33,15 @@ async function fetchRates(): Promise<AllRatesResponse | null> {
 export const HeroSection = () => {
   const { t } = useTranslation();
   const [usdcRates, setUsdcRates] = useState<OurRate | null>(null);
+  const [xlmRates, setXlmRates] = useState<OurRate | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<"buy" | "sell">("buy");
-  const [payInput, setPayInput] = useState("");
-  const [receiveInput, setReceiveInput] = useState("");
-  const [inputSide, setInputSide] = useState<"pay" | "receive">("pay");
+  const [usdcPayInput, setUsdcPayInput] = useState("");
+  const [usdcReceiveInput, setUsdcReceiveInput] = useState("");
+  const [usdcInputSide, setUsdcInputSide] = useState<"pay" | "receive">("pay");
+  const [xlmPayInput, setXlmPayInput] = useState("");
+  const [xlmReceiveInput, setXlmReceiveInput] = useState("");
+  const [xlmInputSide, setXlmInputSide] = useState<"pay" | "receive">("pay");
   const [progress, setProgress] = useState(100);
   const lastFetchRef = useRef<number>(Date.now());
 
@@ -48,7 +52,8 @@ export const HeroSection = () => {
       setLoading(true);
       const data = await fetchRates();
       if (!cancelled) {
-        setUsdcRates(data?.our ?? null);
+        setUsdcRates(data?.our.usdc ?? null);
+        setXlmRates(data?.our.xlm ?? null);
         setLoading(false);
         lastFetchRef.current = Date.now();
         setProgress(100);
@@ -73,60 +78,110 @@ export const HeroSection = () => {
 
   const secondsLeft = Math.ceil((progress / 100) * 60);
   const fmt4 = (n: number) =>
-    n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    n.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    });
   const parse = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
   const fmtVnd = (n: number) => n.toLocaleString("vi-VN");
 
-  const feeRateBuy = usdcRates?.fee_rate_buy ?? 0.008;
-  const feeRateSell = usdcRates?.fee_rate_sell ?? 0.008;
-  const minFeeVnd = usdcRates?.min_fee_vnd ?? 0;
-  const feeRate = mode === "buy" ? feeRateBuy : feeRateSell;
+  const calcFee = (vnd: number, rate: number, minFee: number) =>
+    vnd > 0 ? Math.max(vnd * rate, minFee) : 0;
 
-  const calcFee = (vnd: number, rate: number) =>
-    vnd > 0 ? Math.max(vnd * rate, minFeeVnd) : 0;
+  const computeRow = (
+    rates: OurRate | null,
+    payInput: string,
+    receiveInput: string,
+    inputSide: "pay" | "receive",
+  ) => {
+    const feeRateBuyRow = rates?.fee_rate_buy ?? 0.008;
+    const feeRateSellRow = rates?.fee_rate_sell ?? 0.008;
+    const minFeeVndRow = rates?.min_fee_vnd ?? 0;
 
-  let displayPay = "";
-  let displayReceive = "";
-  let appliedFee = 0;
+    let displayPay = "";
+    let displayReceive = "";
+    let appliedFee = 0;
 
-  if (usdcRates) {
+    if (!rates) {
+      return {
+        displayPay,
+        displayReceive,
+        appliedFee,
+        feeRate: mode === "buy" ? feeRateBuyRow : feeRateSellRow,
+        minFeeVnd: minFeeVndRow,
+      };
+    }
+
     if (inputSide === "pay") {
       const payNum = parse(payInput);
       if (payNum > 0) {
         if (mode === "buy") {
-          appliedFee = calcFee(payNum, feeRateBuy);
-          displayReceive = fmt4((payNum - appliedFee) / usdcRates.buy);
+          appliedFee = calcFee(payNum, feeRateBuyRow, minFeeVndRow);
+          displayReceive = fmt4((payNum - appliedFee) / rates.buy);
+          displayPay = payInput;
         } else {
-          const vnd = payNum * usdcRates.sell;
-          appliedFee = calcFee(vnd, feeRateSell);
+          const assetAmount = payNum;
+          const vnd = assetAmount * rates.sell;
+          appliedFee = calcFee(vnd, feeRateSellRow, minFeeVndRow);
           displayReceive = (vnd - appliedFee).toLocaleString("vi-VN");
+          displayPay = payInput;
         }
       }
     } else {
       const receiveNum = parse(receiveInput);
       if (receiveNum > 0) {
         if (mode === "buy") {
-          // reverse: given desired USDC out, find VND to pay
-          const vndCase1 = (receiveNum * usdcRates.buy) / (1 - feeRateBuy);
-          const vndToPay = vndCase1 * feeRateBuy >= minFeeVnd
-            ? vndCase1
-            : receiveNum * usdcRates.buy + minFeeVnd;
-          appliedFee = calcFee(vndToPay, feeRateBuy);
+          const vndCase1 = (receiveNum * rates.buy) / (1 - feeRateBuyRow);
+          const vndToPay =
+            vndCase1 * feeRateBuyRow >= minFeeVndRow
+              ? vndCase1
+              : receiveNum * rates.buy + minFeeVndRow;
+          appliedFee = calcFee(vndToPay, feeRateBuyRow, minFeeVndRow);
           displayPay = fmtVnd(Math.round(vndToPay));
+          displayReceive = receiveInput;
         } else {
-          // reverse: given desired VND out, find USDC to sell
-          const usdcCase1 = receiveNum / (usdcRates.sell * (1 - feeRateSell));
-          const usdcToSell = usdcCase1 * usdcRates.sell * feeRateSell >= minFeeVnd
-            ? usdcCase1
-            : (receiveNum + minFeeVnd) / usdcRates.sell;
-          appliedFee = calcFee(usdcToSell * usdcRates.sell, feeRateSell);
-          displayPay = fmt4(usdcToSell);
+          const assetCase1 = receiveNum / (rates.sell * (1 - feeRateSellRow));
+          const assetToSell =
+            assetCase1 * rates.sell * feeRateSellRow >= minFeeVndRow
+              ? assetCase1
+              : (receiveNum + minFeeVndRow) / rates.sell;
+          appliedFee = calcFee(
+            assetToSell * rates.sell,
+            feeRateSellRow,
+            minFeeVndRow,
+          );
+          displayPay = fmt4(assetToSell);
+          displayReceive = receiveInput;
         }
       }
     }
-  }
 
-  const usdcFee = appliedFee > 0 ? fmtVnd(Math.round(appliedFee)) : "";
+    return {
+      displayPay,
+      displayReceive,
+      appliedFee,
+      feeRate: mode === "buy" ? feeRateBuyRow : feeRateSellRow,
+      minFeeVnd: minFeeVndRow,
+    };
+  };
+
+  const usdcRow = computeRow(
+    usdcRates,
+    usdcPayInput,
+    usdcReceiveInput,
+    usdcInputSide,
+  );
+  const xlmRow = computeRow(
+    xlmRates,
+    xlmPayInput,
+    xlmReceiveInput,
+    xlmInputSide,
+  );
+
+  const usdcFee =
+    usdcRow.appliedFee > 0 ? fmtVnd(Math.round(usdcRow.appliedFee)) : "";
+  const xlmFee =
+    xlmRow.appliedFee > 0 ? fmtVnd(Math.round(xlmRow.appliedFee)) : "";
 
   return (
     <section
@@ -199,7 +254,9 @@ export const HeroSection = () => {
                   <span className="text-slate-500 font-medium">
                     {t("hero.supportedBanks")}
                   </span>
-                  <span className="font-bold text-slate-900 dark:text-slate-100">50+</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">
+                    50+
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-medium">
@@ -208,6 +265,9 @@ export const HeroSection = () => {
                   <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                     <span className="bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-200 text-blue-700">
                       USDC
+                    </span>
+                    <span className="bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-200 text-blue-700">
+                      XLM
                     </span>
                   </span>
                 </div>
@@ -221,11 +281,13 @@ export const HeroSection = () => {
 
               {/* Live Rate Converter */}
               <div className="bg-slate-100/80 dark:bg-slate-900/60 p-6 border-t border-slate-200 dark:border-slate-700">
-                {/* Header row with pill toggle */}
+                {/* Header row with asset toggle + buy/sell toggle */}
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
-                    {t("hero.liveRates")}
-                  </p>
+                  <div className="text-xs font-semibold">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600">
+                      {t("hero.liveRates")}
+                    </span>
+                  </div>
                   <div className="relative flex rounded-full bg-slate-200 dark:bg-slate-700 p-0.5 text-xs font-semibold">
                     <div
                       className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full transition-all duration-200 ${
@@ -235,7 +297,15 @@ export const HeroSection = () => {
                       }`}
                     />
                     <button
-                      onClick={() => { setMode("buy"); setPayInput(""); setReceiveInput(""); setInputSide("pay"); }}
+                      onClick={() => {
+                        setMode("buy");
+                        setUsdcPayInput("");
+                        setUsdcReceiveInput("");
+                        setUsdcInputSide("pay");
+                        setXlmPayInput("");
+                        setXlmReceiveInput("");
+                        setXlmInputSide("pay");
+                      }}
                       className={`relative z-10 px-3 py-1 rounded-full transition-colors ${
                         mode === "buy" ? "text-white" : "text-slate-500"
                       }`}
@@ -243,7 +313,15 @@ export const HeroSection = () => {
                       {t("hero.buy")}
                     </button>
                     <button
-                      onClick={() => { setMode("sell"); setPayInput(""); setReceiveInput(""); setInputSide("pay"); }}
+                      onClick={() => {
+                        setMode("sell");
+                        setUsdcPayInput("");
+                        setUsdcReceiveInput("");
+                        setUsdcInputSide("pay");
+                        setXlmPayInput("");
+                        setXlmReceiveInput("");
+                        setXlmInputSide("pay");
+                      }}
                       className={`relative z-10 px-3 py-1 rounded-full transition-colors ${
                         mode === "sell" ? "text-white" : "text-slate-500"
                       }`}
@@ -254,64 +332,186 @@ export const HeroSection = () => {
                 </div>
 
                 {/* Input / Output rows */}
-                <div className="space-y-2 mb-3">
+                <div className="space-y-4 mb-3">
                   {/* Column labels */}
                   <div className="grid grid-cols-2 gap-3">
-                    <span className="text-xs text-slate-400 font-medium px-1">{t("hero.youPay")}</span>
-                    <span className="text-xs text-slate-400 font-medium px-1">{t("hero.youReceive")}</span>
+                    <span className="text-xs text-slate-400 font-medium px-1">
+                      {t("hero.youPay")}
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium px-1">
+                      {t("hero.youReceive")}
+                    </span>
                   </div>
 
                   {/* USDC row */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={inputSide === "pay" ? payInput : displayPay}
-                        onChange={(e) => { setPayInput(e.target.value); setInputSide("pay"); }}
-                        placeholder="0"
-                        className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent"
-                      />
-                      <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
-                        {mode === "buy" ? "VND" : "USDC"}
-                      </span>
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        USDC
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={
+                            usdcInputSide === "pay"
+                              ? usdcPayInput
+                              : usdcRow.displayPay
+                          }
+                          onChange={(e) => {
+                            setUsdcPayInput(e.target.value);
+                            setUsdcInputSide("pay");
+                          }}
+                          placeholder="0"
+                          className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent"
+                        />
+                        <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
+                          {mode === "buy" ? "VND" : "USDC"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={inputSide === "receive" ? receiveInput : displayReceive}
-                        onChange={(e) => { setReceiveInput(e.target.value); setInputSide("receive"); }}
-                        placeholder={loading ? "…" : "0"}
-                        disabled={loading}
-                        className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent disabled:opacity-50"
-                      />
-                      <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
-                        {mode === "buy" ? "USDC" : "VND"}
-                      </span>
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        &nbsp;
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={
+                            usdcInputSide === "receive"
+                              ? usdcReceiveInput
+                              : usdcRow.displayReceive
+                          }
+                          onChange={(e) => {
+                            setUsdcReceiveInput(e.target.value);
+                            setUsdcInputSide("receive");
+                          }}
+                          placeholder={loading ? "…" : "0"}
+                          disabled={loading}
+                          className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent disabled:opacity-50"
+                        />
+                        <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
+                          {mode === "buy" ? "USDC" : "VND"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <p className="text-xs text-slate-400 dark:text-slate-500 px-1">
-                    {t("hero.fee")}: <span className="font-semibold text-slate-500">{usdcFee || "0"} ₫</span> ({((feeRate) * 100).toFixed(1)}%{minFeeVnd > 0 ? `, min ${fmtVnd(minFeeVnd)} ₫` : ""})
+                    {t("hero.fee")}:{" "}
+                    <span className="font-semibold text-slate-500">
+                      {usdcFee || "0"} ₫
+                    </span>{" "}
+                    ({(usdcRow.feeRate * 100).toFixed(1)}%
+                    {usdcRow.minFeeVnd > 0
+                      ? `, min ${fmtVnd(usdcRow.minFeeVnd)} ₫`
+                      : ""}
+                    )
+                  </p>
+
+                  {/* XLM row */}
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        XLM
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={
+                            xlmInputSide === "pay"
+                              ? xlmPayInput
+                              : xlmRow.displayPay
+                          }
+                          onChange={(e) => {
+                            setXlmPayInput(e.target.value);
+                            setXlmInputSide("pay");
+                          }}
+                          placeholder="0"
+                          className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent"
+                        />
+                        <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
+                          {mode === "buy" ? "VND" : "XLM"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        &nbsp;
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={
+                            xlmInputSide === "receive"
+                              ? xlmReceiveInput
+                              : xlmRow.displayReceive
+                          }
+                          onChange={(e) => {
+                            setXlmReceiveInput(e.target.value);
+                            setXlmInputSide("receive");
+                          }}
+                          placeholder={loading ? "…" : "0"}
+                          disabled={loading}
+                          className="w-full px-3 pt-2 pb-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none bg-transparent disabled:opacity-50"
+                        />
+                        <span className="block px-3 pb-2 text-xs font-bold text-blue-600">
+                          {mode === "buy" ? "XLM" : "VND"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 px-1">
+                    {t("hero.fee")}:{" "}
+                    <span className="font-semibold text-slate-500">
+                      {xlmFee || "0"} ₫
+                    </span>{" "}
+                    ({(xlmRow.feeRate * 100).toFixed(1)}%
+                    {xlmRow.minFeeVnd > 0
+                      ? `, min ${fmtVnd(xlmRow.minFeeVnd)} ₫`
+                      : ""}
+                    )
                   </p>
                 </div>
-
                 {/* Rate hint */}
                 <div className="mb-4 text-xs text-slate-400 dark:text-slate-500 flex gap-3 flex-wrap">
                   {usdcRates && (
                     <span>
                       1 USDC ={" "}
-                      <span className={`font-semibold ${mode === "buy" ? "text-emerald-600" : "text-red-500"}`}>
-                        {(mode === "buy" ? usdcRates.buy : usdcRates.sell).toLocaleString("vi-VN")} ₫
+                      <span
+                        className={`font-semibold ${mode === "buy" ? "text-emerald-600" : "text-red-500"}`}
+                      >
+                        {(mode === "buy"
+                          ? usdcRates.buy
+                          : usdcRates.sell
+                        ).toLocaleString("vi-VN")}{" "}
+                        ₫
+                      </span>
+                    </span>
+                  )}
+                  {xlmRates && (
+                    <span>
+                      1 XLM ={" "}
+                      <span
+                        className={`font-semibold ${mode === "buy" ? "text-emerald-600" : "text-red-500"}`}
+                      >
+                        {(mode === "buy"
+                          ? xlmRates.buy
+                          : xlmRates.sell
+                        ).toLocaleString("vi-VN")}{" "}
+                        ₫
                       </span>
                     </span>
                   )}
                 </div>
-
                 {/* Refresh progress bar */}
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs text-slate-400 dark:text-slate-500">{t("hero.nextRefresh")}</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {t("hero.nextRefresh")}
+                    </span>
                     <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                       {secondsLeft}s
                     </span>

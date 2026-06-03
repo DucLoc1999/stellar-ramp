@@ -49,7 +49,7 @@ export const LanguageSwitcher = () => {
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 top-full z-50 mt-1.5 min-w-[7rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+          className="absolute right-0 top-full z-50 mt-1.5 min-w-28 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
         >
           {LANGUAGES.map((lang) => (
             <li key={lang.code} role="option" aria-selected={lang.code === i18n.language}>
