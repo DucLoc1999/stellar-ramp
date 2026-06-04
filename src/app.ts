@@ -44,7 +44,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     },
   });
-
+  app.get('/openapi.json', async () => {
+    return app.swagger();
+  });
   await app.register(swaggerUi, { routePrefix: '/docs' });
 
   await app.register(errorHandler);

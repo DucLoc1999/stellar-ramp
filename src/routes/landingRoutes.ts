@@ -68,15 +68,15 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
                 usdc: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: ['number', 'null'] },
-                    bestSellPrice: { type: ['number', 'null'] },
+                    bestBuyPrice: { type: 'number', nullable: true },
+                    bestSellPrice: { type: 'number', nullable: true },
                   },
                 },
                 xlm: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: ['number', 'null'] },
-                    bestSellPrice: { type: ['number', 'null'] },
+                    bestBuyPrice: { type: 'number', nullable: true },
+                    bestSellPrice: { type: 'number', nullable: true },
                   },
                 },
               },
@@ -87,15 +87,15 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
                 usdc: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: ['number', 'null'] },
-                    bestSellPrice: { type: ['number', 'null'] },
+                    bestBuyPrice: { type: 'number', nullable: true },
+                    bestSellPrice: { type: 'number', nullable: true },
                   },
                 },
                 xlm: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: ['number', 'null'] },
-                    bestSellPrice: { type: ['number', 'null'] },
+                    bestBuyPrice: { type: 'number', nullable: true },
+                    bestSellPrice: { type: 'number', nullable: true },
                   },
                 },
               },
@@ -106,15 +106,15 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
                 usdc: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: ['number', 'null'] },
-                    bestSellPrice: { type: ['number', 'null'] },
+                    bestBuyPrice: { type: 'number', nullable: true },
+                    bestSellPrice: { type: 'number', nullable: true },
                   },
                 },
                 xlm: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: ['number', 'null'] },
-                    bestSellPrice: { type: ['number', 'null'] },
+                    bestBuyPrice: { type: 'number', nullable: true },
+                    bestSellPrice: { type: 'number', nullable: true },
                   },
                 },
               },
