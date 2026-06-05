@@ -38,6 +38,7 @@ export const ErrorCodes = {
   INSUFFICIENT_LIQUIDITY: { code: 'INSUFFICIENT_LIQUIDITY', statusCode: 409, retriable: false },
   RESERVATION_NOT_READY: { code: 'RESERVATION_NOT_READY', statusCode: 503, retriable: true },
   MAX_ORDER_EXCEEDED: { code: 'MAX_ORDER_EXCEEDED', statusCode: 400, retriable: false },
+  PARTNER_NOT_FOUND: { code: 'PARTNER_NOT_FOUND', statusCode: 404, retriable: false },
 } as const;
 
 export function createErrorReply(

@@ -38,7 +38,7 @@ export async function handleDeposit(
     return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
   }
   try {
-    const data = await createDeposit(req.body, { clientIp: req.ip });
+    const data = await createDeposit(req.body, { clientIp: req.ip, partner: req.partner });
     return reply.send({ success: true, data });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -79,7 +79,7 @@ export async function handleWithdrawal(
     return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
   }
   try {
-    const data = await createWithdrawal(req.body, { clientIp: req.ip });
+    const data = await createWithdrawal(req.body, { clientIp: req.ip, partner: req.partner });
     return reply.send({ success: true, data });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);

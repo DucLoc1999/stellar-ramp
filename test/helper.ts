@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -5,6 +6,7 @@ import { orderRoutes } from '../src/routes/orderRoutes';
 import { webhookRoutes } from '../src/routes/webhookRoutes';
 import { configRoutes } from '../src/routes/configRoutes';
 import { adminRoutes } from '../src/routes/adminRoutes';
+import { cmsRoutes } from '../src/routes/cmsRoutes';
 import { errorHandler } from '../src/middlewares/errorHandler';
 import db from '../src/db';
 
@@ -21,6 +23,7 @@ export async function buildApp() {
   await app.register(errorHandler);
   
   await app.register(adminRoutes);
+  await app.register(cmsRoutes, { prefix: '/cms' });
   await app.register(configRoutes, { prefix: '/config' });
   await app.register(orderRoutes, { prefix: '/api/orders' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
@@ -57,6 +60,17 @@ async function setupTestTables() {
     t.timestamp('changed_at').defaultTo(db.fn.now());
   });
 
+  // Partners table
+  await db.schema.createTable('partners', (t) => {
+    t.string('id', 36).primary();
+    t.string('name', 255).notNullable();
+    t.string('key', 255).notNullable().unique();
+    t.decimal('fee_buy', 10, 6).notNullable().defaultTo(0);
+    t.decimal('fee_sell', 10, 6).notNullable().defaultTo(0);
+    t.boolean('active').notNullable().defaultTo(true);
+    t.timestamp('created_at').defaultTo(db.fn.now());
+    t.timestamp('updated_at').defaultTo(db.fn.now());
+  });
   // Orders table
   await db.schema.createTable('orders', (t) => {
     t.increments('id');
@@ -94,6 +108,7 @@ async function setupTestTables() {
     t.string('cancel_reason', 500);
     t.text('api_data');
     t.string('last_webhook_id', 100);
+    t.string('partner_id', 36);
     // Withdrawal-specific fields
     t.string('bank_id', 50);
     t.string('bank_account_name', 100);
@@ -150,6 +165,18 @@ async function setupTestTables() {
     { key: 'fee_rate_buy',   value: '0.008', description: 'Fee rate for buy orders (0.8%)' },
     { key: 'fee_rate_sell',  value: '0.008', description: 'Fee rate for sell orders (0.8%)' },
   ]);
+
+  const partnerKey = process.env.PARTNER_APP_KEY;
+  if (partnerKey) {
+    await db('partners').insert({
+      id: crypto.randomUUID(),
+      name: process.env.PARTNER_BOOTSTRAP_NAME || 'default-partner',
+      key: partnerKey,
+      fee_buy: Number(process.env.PARTNER_BOOTSTRAP_FEE_BUY ?? 0),
+      fee_sell: Number(process.env.PARTNER_BOOTSTRAP_FEE_SELL ?? 0),
+      active: true,
+    }).onConflict('key').ignore();
+  }
 }
 
 export async function cleanOrders() {

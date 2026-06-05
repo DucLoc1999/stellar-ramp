@@ -60,6 +60,63 @@ describe('Admin workflow', () => {
     expect(body.data.spread_buy).toBe(75);
   });
 
+  it('POST /cms/partner creates a partner and exposes its key', async () => {
+    const token = await login();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cms/partner',
+      headers: { authorization: 'Bearer ' + token },
+      payload: { name: 'Partner A', fee_buy: 0.002, fee_sell: 0.003, active: true },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.id).toBeTruthy();
+    expect(body.data.key).toMatch(/^[a-f0-9]{64}$/);
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/cms/partner/' + body.data.id,
+      headers: { authorization: 'Bearer ' + token },
+    });
+
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().data.name).toBe('Partner A');
+  });
+
+  it('applies partner fee and persists partner_id on new orders', async () => {
+    const token = await login();
+    const partnerRes = await app.inject({
+      method: 'POST',
+      url: '/cms/partner',
+      headers: { authorization: 'Bearer ' + token },
+      payload: { name: 'Partner B', fee_buy: 0.002, fee_sell: 0.003, active: true },
+    });
+
+    const partner = partnerRes.json().data;
+    const orderRes = await app.inject({
+      method: 'POST',
+      url: '/api/orders/deposit',
+      headers: { 'partner-app-key': partner.key },
+      payload: {
+        amount: '100',
+        chain_id: 56,
+        asset_code: 'USDC',
+        token_address: '0x55d398326f99059fF775485246999027B3197955',
+        recipient: 'GDZST3XVCDTUJ76ZAV2HA72KYPJM7L7J4JZ5L6G6UFVPJKZ6JCZXM5CM',
+        callback: 'https://example.com/webhook',
+      },
+    });
+
+    expect(orderRes.statusCode).toBe(200);
+    const order = orderRes.json().data;
+    expect(order.total_fee_vnd).toBe(25000);
+
+    const row = await db('orders').where({ payment_code: order.code }).first();
+    expect(row.partner_id).toBe(partner.id);
+    expect(Number(row.fee_vnd)).toBe(25000);
+  });
   it('GET /stats returns aggregated totals (auth)', async () => {
     const token = await login();
 

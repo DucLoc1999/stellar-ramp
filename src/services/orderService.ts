@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import db from '../db';
-import { getQuote } from './priceService';
+import { getQuote, getMinFee } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
 import { getConfigNumber, getTokenConfig } from './configService';
+import type { PartnerAuthContext } from './partnerService';
 import { executePayout, getAccountBalance } from './payoutService';
 import { emitOrderPaid } from './queueService';
 import { consumeReservation, releaseReservation, reserveForOrder, rollbackReservation } from './reservationService';
@@ -57,10 +58,12 @@ interface OrderRow {
   bank_id: string | null;
   bank_account_name: string | null;
   bank_account_no: string | null;
+  partner_id: string | null;
 }
 
 export interface CreateOptions {
   clientIp?: string;
+  partner?: PartnerAuthContext;
 }
 
 export interface CreateDepositParams extends DepositRequest {
@@ -73,6 +76,35 @@ function toTimestamp(date: Date | string | number): Usdt247Timestamp {
     seconds: Math.floor(ms / 1000),
     nanos: (ms % 1000) * 1_000_000,
   };
+}
+async function buildPartnerAdjustedQuote(
+  direction: 'buy' | 'sell',
+  usdtAmount: number,
+  asset: string,
+  partner?: PartnerAuthContext,
+): Promise<{
+  direction: 'buy' | 'sell';
+  usdt_amount: number;
+  rate: number;
+  original_rate: number;
+  spread: number;
+  gross_vnd: number;
+  fee_rate: number;
+  fee_vnd: number;
+  net_vnd: number;
+  note: string;
+}> {
+  const baseQuote = await getQuote(direction, usdtAmount, asset);
+  const partnerFeeRate = partner ? (direction === 'buy' ? partner.fee_buy : partner.fee_sell) : 0;
+  const fee_rate = baseQuote.fee_rate + partnerFeeRate;
+  const minFee = await getMinFee(asset);
+  const fee_vnd = Math.max(Math.round(baseQuote.gross_vnd * fee_rate), minFee);
+  const net_vnd = direction === 'buy' ? baseQuote.gross_vnd + fee_vnd : baseQuote.gross_vnd - fee_vnd;
+  const assetCode = asset.toUpperCase();
+  const note = direction === 'buy'
+    ? 'Bạn cần chuyển ' + net_vnd.toLocaleString('vi-VN') + ' VND để nhận ' + usdtAmount + ' ' + assetCode
+    : 'Bạn nhận được ' + net_vnd.toLocaleString('vi-VN') + ' VND khi bán ' + usdtAmount + ' ' + assetCode;
+  return { ...baseQuote, fee_rate, fee_vnd, net_vnd, note };
 }
 
 async function toApiOrder(
@@ -112,7 +144,7 @@ async function toApiOrder(
     asset_code: order.asset_code || '',
     recipient: order.recipient ?? '',
     chain_id: order.chain_id,
-    partner_id: "1",  // update when have partner assign system
+    partner_id: order.partner_id ?? null,
     state: order.order_state,
     processing_state: order.processing_state ?? 0,
     body: overrides?.body ?? {
@@ -206,8 +238,13 @@ async function transitionOrder(
   return firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
 }
 
-export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC', paymentCode?: string) {
-  const quote = await getQuote('buy', usdt_amount, asset);
+export async function createBuyOrder(
+  usdt_amount: number,
+  asset: string = 'USDC',
+  paymentCode?: string,
+  options?: { partner?: PartnerAuthContext; quote?: Awaited<ReturnType<typeof buildPartnerAdjustedQuote>> },
+) {
+  const quote = options?.quote ?? await buildPartnerAdjustedQuote('buy', usdt_amount, asset, options?.partner);
   const payment_code = paymentCode || generatePaymentCode();
   const sepayOrder = await createSepayOrder({
     payment_code,
@@ -227,6 +264,7 @@ export async function createBuyOrder(usdt_amount: number, asset: string = 'USDC'
     transfer_content: sepayOrder.transfer_content,
     amount: sepayOrder.amount,
     order_state: OrderState.CREATED,
+    partner_id: options?.partner?.id ?? null,
   });
   const id = firstInsertedId(inserted);
 
@@ -323,7 +361,7 @@ export async function createDeposit(
   const paymentCode = generatePaymentCode();
   const usdtAmount = Number(req.amount);
 
-  const quote = await getQuote('buy', usdtAmount, req.asset_code);
+  const quote = await buildPartnerAdjustedQuote('buy', usdtAmount, req.asset_code, options?.partner);
 
   const reserveResult = await reserveForOrder({
     paymentCode,
@@ -339,7 +377,7 @@ export async function createDeposit(
 
   let result: Awaited<ReturnType<typeof createBuyOrder>>;
   try {
-    result = await createBuyOrder(usdtAmount, req.asset_code, paymentCode);
+    result = await createBuyOrder(usdtAmount, req.asset_code, paymentCode, { partner: options?.partner, quote });
   } catch (error) {
     await rollbackReservation(paymentCode);
     throw error;
@@ -405,7 +443,7 @@ export async function createWithdrawal(
   if (usdtAmount > maxOrder) {
     throw new Error('MAX_ORDER_EXCEEDED');
   }
-  const quote = await getQuote('sell', usdtAmount, req.asset_code);
+  const quote = await buildPartnerAdjustedQuote('sell', usdtAmount, req.asset_code, options?.partner);
   const payment_code = generatePaymentCode();
   const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
 
@@ -444,6 +482,7 @@ export async function createWithdrawal(
         bank_account_no: req.payment_info.account_number,
         payment_info: JSON.stringify(req.payment_info),
         expired_at: expiredAt,
+        partner_id: options?.partner?.id ?? null,
       });
   } catch (error) {
     await rollbackReservation(payment_code);

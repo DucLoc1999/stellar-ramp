@@ -134,6 +134,7 @@ describe('POST /api/orders/deposit', () => {
     expect(row.callback).toBe(DEPOSIT_BODY.callback);
     expect(row.order_state).toBe(1);
     expect(row.payment_status).toBe('pending');
+    expect(row.partner_id).toBeTruthy();
   });
 
   it('rejects negative amount', async () => {
@@ -215,6 +216,7 @@ describe('POST /api/orders/withdrawal', () => {
     expect(row.bank_account_name).toBe('NGUYEN VAN A');
     expect(row.bank_account_no).toBe('1234567890');
     expect(row.direction).toBe('sell');
+    expect(row.partner_id).toBeTruthy();
   });
 
   it('rejects negative amount', async () => {

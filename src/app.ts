@@ -17,6 +17,7 @@ import { runMigrations } from './utils/migrationRunner';
 import { testConnection } from './config/database';
 import { logger } from './config/logger';
 import { ensureBootstrapAdmin } from './services/adminService';
+import { ensureBootstrapPartner } from './services/partnerService';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
@@ -64,6 +65,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     try {
       await runMigrations();
       await ensureBootstrapAdmin();
+      await ensureBootstrapPartner();
 
       await testConnection(db);
       logger.info('Database connection verified');

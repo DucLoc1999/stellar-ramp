@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { handleCmsLogin, handleCreateAdmin, handleGetConfig, handlePatchCmsConfig, handleGetRates, handleGetAuditLog, handleChangePassword, handleGetBuyOrders, handleGetSellOrders } from '../controllers/cmsController';
+import { handleCreatePartner, handleGetPartner, handleListPartners } from '../controllers/partnerController';
 import { adminAuth } from '../middlewares/adminAuth';
 
 export async function cmsRoutes(app: FastifyInstance): Promise<void> {
@@ -67,6 +68,117 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     },
   }, handleCreateAdmin as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 
+  app.post('/partner', {
+    preHandler: adminAuth,
+    schema: {
+      tags: ['CMS'],
+      summary: 'Create a new partner account',
+      security: [{ BearerAuth: [] }],
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'fee_buy', 'fee_sell'],
+        properties: {
+          name: { type: 'string' },
+          fee_buy: { type: 'number', minimum: 0 },
+          fee_sell: { type: 'number', minimum: 0 },
+          active: { type: 'boolean' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                key: { type: 'string' },
+                fee_buy: { type: 'number' },
+                fee_sell: { type: 'number' },
+                active: { type: 'boolean' },
+                created_at: { type: 'string' },
+                updated_at: { type: ['string', 'null'] },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, handleCreatePartner as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
+
+  app.get('/partner', {
+    preHandler: adminAuth,
+    schema: {
+      tags: ['CMS'],
+      summary: 'List partner configs',
+      security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  key: { type: 'string' },
+                  fee_buy: { type: 'number' },
+                  fee_sell: { type: 'number' },
+                  active: { type: 'boolean' },
+                  created_at: { type: 'string' },
+                  updated_at: { type: ['string', 'null'] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, handleListPartners as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
+
+  app.get('/partner/:id', {
+    preHandler: adminAuth,
+    schema: {
+      tags: ['CMS'],
+      summary: 'Get partner config by ID',
+      security: [{ BearerAuth: [] }],
+      params: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: {
+          id: { type: 'string' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                key: { type: 'string' },
+                fee_buy: { type: 'number' },
+                fee_sell: { type: 'number' },
+                active: { type: 'boolean' },
+                created_at: { type: 'string' },
+                updated_at: { type: ['string', 'null'] },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, handleGetPartner as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
   const tokenSideConfigSchema = {
     type: 'object',
     properties: {
