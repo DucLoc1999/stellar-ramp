@@ -7,7 +7,7 @@ module.exports = {
     exec_mode: "fork",              // "fork" phù hợp cho app thanh toán để dễ debug log
     watch: false,                   // Tắt watch ở production để tránh restart ngoài ý muốn
     max_memory_restart: "1G",       // Tự khởi động lại nếu app ngốn quá 1GB RAM
-    cron_restart: '50 19 * * *',     // Khởi động lại lúc 19:50 UTC 02:50 GTM+7 mỗi ngày
+    // cron_restart: '50 19 * * *',     // Khởi động lại lúc 19:50 UTC 02:50 GTM+7 mỗi ngày
     env: {
       NODE_ENV: "production",
       PORT: 3000
