@@ -12,17 +12,7 @@ http://localhost:3000
 
 ### Client → Service (Partner-App-Key)
 
-All order API endpoints require the `Partner-App-Key` header:
-
-```
-Partner-App-Key: <your-partner-key>
-```
-
-Endpoints requiring auth:
-- `POST /api/orders/deposit`
-- `POST /api/orders/withdrawal`
-- `GET /api/orders/:id`
-- `POST /api/orders/:id/cancel`
+All order API endpoints require the `Partner-App-Key` header.
 
 ### Provider → Service Webhooks
 
@@ -31,7 +21,7 @@ Endpoints requiring auth:
 Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
 ```
 
-**Stellar incoming** (fallback when Kafka unavailable):
+**Stellar incoming:**
 ```
 Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
 ```
@@ -43,15 +33,6 @@ X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)
 ```
 
 Replay protection: requests older than 5 minutes are rejected.
-
----
-
-## Supported Assets
-
-| Asset Code | Type | Token Address | Description |
-|------------|------|---------------|-------------|
-| `USDC` | Token | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` | USDC on Stellar |
-| `XLM` | Native | Empty string (`""`) | Stellar Lumens (no token address needed) |
 
 ---
 
@@ -275,8 +256,6 @@ Partner-App-Key: <your-partner-key>
 }
 ```
 
-**Important:** After creating a withdrawal order, the client must send the crypto to `pay_data.address` with the **payment code as the Stellar memo**. Example: send 10 XLM to `Ghotwallet...` with memo `DHZ9Y8X7W6V`.
-
 ---
 
 ### 3. Get Order Status
@@ -329,10 +308,6 @@ Partner-App-Key: <your-partner-key>
   "reason": "User requested cancellation"
 }
 ```
-
-**Logic:**
-- Only orders in `CREATED(1)` or `PROCESSING(2)` (without irreversible steps) can be cancelled
-- For sell orders: if USDC already received at hot wallet, cancellation is rejected
 
 **Response (200):**
 ```json
@@ -408,8 +383,6 @@ Content-Type: application/json
 POST /api/webhooks/stellar-incoming
 ```
 
-Used when `stellar-listener` cannot reach Kafka and falls back to HTTP POST.
-
 **Headers:**
 ```
 Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
@@ -438,19 +411,13 @@ Content-Type: application/json
 }
 ```
 
----
-
-### 7. Chain Webhook (Sell — External System Trigger)
-
-**Status: Not currently implemented.**
-
-This endpoint was planned but is not yet registered in the service. Sell order completion is handled via `/api/webhooks/stellar-incoming` or Kafka events from `stellar-listener`.
+**Status: Not implemented.**
 
 ---
 
 ## Webhook Callback to Client
 
-When order state changes, backend POSTs to client's `callback` URL:
+Service POSTs to client's `callback` URL when order state changes.
 
 **Headers:**
 ```
@@ -511,82 +478,6 @@ function verifyCallback(secret, timestamp, body, signature) {
 | 4 | FAILED | Order failed |
 | 5 | CANCELLED | Order cancelled |
 
-**State Transitions:**
-```
-CREATED(1) → PROCESSING(2) → COMPLETED(3)
-           ↘ FAILED(4)
-CREATED(1) → CANCELLED(5)
-```
-
----
-
-## Processing States
-
-Processing states track detailed progress within each flow.
-
-### Buy Flow (Deposit)
-
-| State | Value | Description |
-|-------|-------|-------------|
-| BUY_ORDER_CREATED | 10 | Order created, waiting for VND |
-| BUY_DISBURSE_COMPLETED | 14 | USDC disbursed to recipient |
-| BUY_DISBURSE_FAILED | 15 | USDC disbursement failed |
-
-### Sell Flow (Withdrawal)
-
-| State | Value | Description |
-|-------|-------|-------------|
-| SELL_CREATED | 10 | Order created, waiting for crypto |
-| SELL_PAYMENT_RECEIVED | 12 | Crypto received at hot wallet |
-| SELL_PAYOUT_COMPLETED | 13 | VND payout completed |
-| SELL_PAYOUT_FAILED | 14 | VND payout failed |
-
----
-
-## Complete Flow
-
-### Buy Crypto (Deposit)
-
-1. **Client** → `POST /api/orders/deposit` with amount + asset + recipient + callback
-2. **Server** → Returns `code`, bank info, `transferContent` (payment code)
-3. **Client** → Shows QR code / bank transfer instructions
-4. **User** → Transfers VND to SePay with content = `code`
-5. **SePay** → `POST /api/webhooks/sepay`
-6. **Server** → Updates order to PROCESSING, triggers USDC disbursement via Stellar
-7. **Worker** → Sends USDC via Stellar to recipient wallet
-8. **Server** → Updates to COMPLETED, POSTs callback with new state
-
-### Sell Crypto (Withdrawal)
-
-1. **Client** → `POST /api/orders/withdrawal` with amount + asset + bank info + callback
-2. **Server** → Returns `code`, hot wallet address in `pay_data`
-3. **Client** → Instructs user to send crypto to `pay_data.address` with `code` as memo
-4. **stellar-listener** → Detects incoming tx (Kafka or HTTP fallback)
-5. **Worker/Webhook** → Matches tx to order, validates, updates to PROCESSING
-6. **Server** → Executes VND payout to bank via PayOS
-7. **Server** → Updates to COMPLETED/FAILED, POSTs callback with new state
-
----
-
-## Amount Calculation
-
-**Buy (Deposit):**
-```
-net_vnd = amount × rate + fee_vnd
-fee_vnd = max(amount × rate × fee_rate, 5000)
-```
-
-**Sell (Withdrawal):**
-```
-net_vnd = amount × rate - fee_vnd
-fee_vnd = max(amount × rate × fee_rate, 5000)
-```
-
-Example for buying 10 XLM at rate 4490 VND:
-- gross_vnd = 10 × 4490 = 44,900 VND
-- fee_vnd = max(44,900 × 0.008, 5000) = 5000 VND (min fee)
-- net_vnd = 44,900 + 5000 = 49,900 VND
-
 ---
 
 ## Error Response Schema
@@ -623,70 +514,7 @@ Every response includes `X-Trace-ID` header for debugging.
 
 ---
 
-## Environment Variables
-
-```env
-# Partner API key (client → service auth)
-PARTNER_APP_KEY=your-partner-key
-
-# Callback webhook settings
-CALLBACK_TIMEOUT_MS=8000
-CALLBACK_RETRY_COUNT=3
-CALLBACK_RETRY_DELAY_MS=5000
-
-# Callback signature secret (shared with client)
-CALLBACK_SIGNATURE_SECRET=min-32-char-secret
-
-# SePay webhook API key (provider → service auth)
-SEPAY_WEBHOOK_API_KEY=
-
-# Chain webhook secret (provider → service auth)
-CHAIN_WEBHOOK_SECRET=
-
-# Kafka
-KAFKA_BROKERS=localhost:9092
-KAFKA_CLIENT_ID=payment_svc
-KAFKA_DISBURSE_TOPIC=disburse_crypto
-KAFKA_ORDER_PAID_TOPIC=order_paid
-KAFKA_TOKEN_IN_TOPIC=stellar_token_in
-
-# Stellar
-STELLAR_NETWORK=testnet
-STELLAR_HOT_WALLET_NAME=stellar_hot_wallet
-STELLAR_HOT_WALLET_ENCRYPTION_KEY=32-char-key
-
-# Payout (PayOS — VND bank transfer)
-PAYOUT_MODE=stub
-PAYOS_CLIENT_ID=
-PAYOS_API_KEY=
-PAYOS_CHECKSUM_KEY=
-
-# CoinGecko API key (for XLM price, optional)
-COINGECKO_API_KEY=
-```
-
----
-
-## Swagger UI
-
-Full API docs at: `http://<server-ip>:3000/docs`
-
----
-
-## Callback Retry
-
-Callbacks are retried up to 3 times with 5-second delays between attempts. All attempts are logged to `callback_logs` table.
-
-Failed callbacks can be queried:
-```sql
-SELECT * FROM callback_logs WHERE status = 'failed' ORDER BY created_at DESC;
-```
-
----
-
 ## Order Redirect Pages
-
-Used by frontend to redirect users to an order status page after a payment attempt.
 
 ### Success Redirect
 
@@ -740,8 +568,6 @@ GET /api/orders/:id/cancel
 ```
 GET /api/landing/p2p-rates
 ```
-
-Returns best buy/sell prices from Binance, OKX, Bybit and our service for USDC and XLM. No authentication required.
 
 **Response (200):**
 ```json
@@ -802,8 +628,6 @@ POST /api/bypass/bypass-payment
 }
 ```
 
-**Logic:** Skips SePay webhook confirmation. Directly sets buy order to PROCESSING and triggers USDC disbursement.
-
 **Response (200):**
 ```json
 { "success": true }
@@ -832,8 +656,6 @@ POST /api/bypass/bypass-sell-payment
 }
 ```
 
-**Logic:** Skips chain webhook. Directly processes sell payment (simulates receiving crypto at hot wallet).
-
 **Response (200):**
 ```json
 { "success": true }
@@ -849,8 +671,6 @@ Possible errors: `INVALID_ADMIN_CODE`, `ORDER_NOT_FOUND`, `NOT_SELL_ORDER`, `ORD
 ---
 
 ## Admin Endpoints
-
-JWT authentication required for all `/admin` routes (except `/admin/login`).
 
 ### Login
 
@@ -943,8 +763,6 @@ Content-Type: application/json
   "secret": "new-secret-at-least-32-characters-long"
 }
 ```
-
-**Logic:** Updates `callback_secret_current`. Previous secret stored as `callback_secret_previous` for dual-secret rotation window (5 minutes).
 
 **Response (200):**
 ```json
@@ -1074,8 +892,6 @@ Content-Type: application/json
 
 ## CMS Endpoints
 
-Internal admin panel API. JWT authentication required for all routes except `/cms/login` and `/cms/admins`.
-
 ### CMS Login
 
 ```
@@ -1118,8 +934,6 @@ POST /cms/admins
   "password": "password123"
 }
 ```
-
-Requires `CMS_CREATE_ADMIN_KEY` env var.
 
 **Response (201):**
 ```json
@@ -1247,8 +1061,6 @@ GET /cms/config
 Authorization: Bearer <jwt>
 ```
 
-Returns per-token fee/spread config (creates defaults if missing).
-
 **Response (200):**
 ```json
 {
@@ -1309,8 +1121,6 @@ Content-Type: application/json
 GET /cms/rates
 ```
 
-No authentication required. Returns our current buy/sell rates for USDC and XLM.
-
 **Response (200):**
 ```json
 {
@@ -1334,8 +1144,6 @@ GET /cms/admin/audit
 ```
 Authorization: Bearer <jwt>
 ```
-
-Returns last 50 fee config changes.
 
 **Response (200):**
 ```json
