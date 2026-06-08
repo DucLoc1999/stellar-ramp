@@ -36,6 +36,16 @@ Replay protection: requests older than 5 minutes are rejected.
 
 ---
 
+## Supported Assets
+
+| Network | Asset | Contract Address |
+|---------|-------|-----------------|
+| Mainnet | USDC | `GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN` |
+| Testnet | USDC | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
+| Both | XLM | Native (no address needed) |
+
+---
+
 ## Rate Endpoints
 
 Rate endpoints return **our** prices, not raw exchange prices. Rates are based on Binance P2P median with spread + fee applied. Rates are cached for 30 seconds. These endpoints are public (no authentication required).
