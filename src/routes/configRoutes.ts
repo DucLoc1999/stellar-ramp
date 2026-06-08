@@ -96,24 +96,6 @@ export async function configRoutes(app: FastifyInstance): Promise<void> {
           XLM_sell: tokenSideConfigSchema,
         },
       },
-      response: {
-        200: {
-          type: 'object',
-          description: 'Updated fee config (same shape as GET /config/fees)',
-          properties: {
-            success: { type: 'boolean' },
-            data: { type: 'object' },
-          },
-        },
-        400: {
-          type: 'object',
-          description: 'No config fields provided.',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-          },
-        },
-      },
     },
   }, handlePatchConfig as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 }

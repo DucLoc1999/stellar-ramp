@@ -80,7 +80,7 @@ export async function handleGetStats(
     totalNetVnd += net_vnd;
     totalFeeVnd += fee_vnd;
     totalUsdt += usdt_amount;
-    byDirection[String(r.direction)] = { count, net_vnd, fee_vnd, usdt_amount };
+byDirection[String(r.direction)] = { count, net_vnd, fee_vnd, usdt_amount };
   }
 
   reply.send({

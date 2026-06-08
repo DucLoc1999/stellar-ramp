@@ -53,7 +53,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
                     usdt_amount: { type: 'number' },
                   },
                 },
-                by_direction: { type: 'object' },
+                by_direction: { type: 'object', additionalProperties: true },
               },
             },
           },

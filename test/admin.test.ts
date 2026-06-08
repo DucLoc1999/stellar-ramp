@@ -130,7 +130,7 @@ describe('Admin workflow', () => {
       fee_vnd: 2000,
       payment_status: 'payment_received',
       order_state: 3,
-      payment_confirmed_at: db.fn.now(),
+      payment_confirmed_at: new Date().toISOString(),
     });
 
     const res = await app.inject({
