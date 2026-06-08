@@ -57,6 +57,8 @@ Replay protection: requests older than 5 minutes are rejected.
 
 ## Rate Endpoints
 
+Rate endpoints return **our** prices, not raw exchange prices. Rates are based on Binance P2P median with spread + fee applied. Rates are cached for 30 seconds. These endpoints are public (no authentication required).
+
 ### Get USDC/VND Rate
 
 ```
@@ -440,36 +442,9 @@ Content-Type: application/json
 
 ### 7. Chain Webhook (Sell — External System Trigger)
 
-```
-POST /api/webhooks/chain
-```
+**Status: Not currently implemented.**
 
-**Headers:**
-```
-X-Webhook-Timestamp: <unix-ms>
-X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)
-Content-Type: application/json
-```
-
-**Body:**
-```json
-{
-  "order_key": "DHZ9Y8X7W6V",
-  "tx_hash": "abc123...",
-  "amount": "10.00",
-  "address": "GABC123...YZ",
-  "chain_id": 1,
-  "token_address": "",
-  "asset_code": "XLM"
-}
-```
-
-**Response (200):**
-```json
-{
-  "success": true
-}
-```
+This endpoint was planned but is not yet registered in the service. Sell order completion is handled via `/api/webhooks/stellar-incoming` or Kafka events from `stellar-listener`.
 
 ---
 
@@ -706,3 +681,769 @@ Failed callbacks can be queried:
 ```sql
 SELECT * FROM callback_logs WHERE status = 'failed' ORDER BY created_at DESC;
 ```
+
+---
+
+## Order Redirect Pages
+
+Used by frontend to redirect users to an order status page after a payment attempt.
+
+### Success Redirect
+
+```
+GET /api/orders/:id/success
+```
+
+**Parameters:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Numeric order ID or payment code |
+
+**Response (302):** Redirects to `${DOMAIN}/order/{payment_code}?payment=success`
+
+---
+
+### Error Redirect
+
+```
+GET /api/orders/:id/error
+```
+
+**Parameters:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Numeric order ID or payment code |
+
+**Response (302):** Redirects to `${DOMAIN}/order/{payment_code}?payment=error`
+
+---
+
+### Cancel Redirect
+
+```
+GET /api/orders/:id/cancel
+```
+
+**Parameters:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Numeric order ID or payment code |
+
+**Response (302):** Redirects to `${DOMAIN}/order/{payment_code}?payment=cancel`
+
+---
+
+## Landing Page Endpoints
+
+### Get All P2P Rates
+
+```
+GET /api/landing/p2p-rates
+```
+
+Returns best buy/sell prices from Binance, OKX, Bybit and our service for USDC and XLM. No authentication required.
+
+**Response (200):**
+```json
+{
+  "binance": {
+    "usdc": { "bestBuyPrice": 26510, "bestSellPrice": 26400 },
+    "xlm": { "bestBuyPrice": 4540, "bestSellPrice": 4480 }
+  },
+  "okx": { ... },
+  "bybit": { ... },
+  "our": {
+    "usdc": { "buy": 26504, "sell": 26358, "fee_rate_buy": 0.008, "fee_rate_sell": 0.008, "min_fee_vnd": 5000 },
+    "xlm": { "buy": 4538, "sell": 4238, "fee_rate_buy": 0.008, "fee_rate_sell": 0.008, "min_fee_vnd": 5000 }
+  }
+}
+```
+
+---
+
+### Get P2P Price History
+
+```
+GET /api/landing/p2p-history?days=7
+```
+
+**Querystring:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `days` | integer | 7 | History window (1–30 days) |
+
+**Response (200):**
+```json
+{
+  "binance": [{ "created_at": 1746931200, "buy": 26510, "sell": 26400 }],
+  "okx": [...],
+  "bybit": [...],
+  "our": [...]
+}
+```
+
+---
+
+## Bypass Endpoints
+
+**For testing only.** These endpoints bypass normal payment flow using `ADMIN_BOOTSTRAP_PASSWORD`. Do not expose in production.
+
+### Bypass Buy Payment
+
+```
+POST /api/bypass/bypass-payment
+```
+
+**Body:**
+```json
+{
+  "admin_key": "your-bootstrap-password",
+  "order_id": 123
+}
+```
+
+**Logic:** Skips SePay webhook confirmation. Directly sets buy order to PROCESSING and triggers USDC disbursement.
+
+**Response (200):**
+```json
+{ "success": true }
+```
+
+**Error (400):**
+```json
+{ "success": false, "error": "ORDER_NOT_ELIGIBLE" }
+```
+
+Possible errors: `INVALID_ADMIN_CODE`, `ORDER_NOT_FOUND`, `NOT_BUY_ORDER`, `ORDER_NOT_ELIGIBLE`, `CONFIRMATION_FAILED`
+
+---
+
+### Bypass Sell Payment
+
+```
+POST /api/bypass/bypass-sell-payment
+```
+
+**Body:**
+```json
+{
+  "admin_key": "your-bootstrap-password",
+  "order_id": 456
+}
+```
+
+**Logic:** Skips chain webhook. Directly processes sell payment (simulates receiving crypto at hot wallet).
+
+**Response (200):**
+```json
+{ "success": true }
+```
+
+**Error (400):**
+```json
+{ "success": false, "error": "ORDER_NOT_FOUND" }
+```
+
+Possible errors: `INVALID_ADMIN_CODE`, `ORDER_NOT_FOUND`, `NOT_SELL_ORDER`, `ORDER_NOT_ELIGIBLE`
+
+---
+
+## Admin Endpoints
+
+JWT authentication required for all `/admin` routes (except `/admin/login`).
+
+### Login
+
+```
+POST /admin/login
+```
+
+**Body:**
+```json
+{
+  "email": "admin@example.com",
+  "password": "password123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "eyJhbGc...",
+    "token_type": "Bearer",
+    "expires_in": 43200
+  }
+}
+```
+
+**Error (401):**
+```json
+{ "success": false, "error": "Invalid credentials" }
+```
+
+---
+
+### Get Statistics
+
+```
+GET /admin/stats?from=2026-01-01&to=2026-12-31
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+**Querystring:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `from` | string (ISO date) | Start date (optional) |
+| `to` | string (ISO date) | End date (optional) |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "from": "2026-01-01T00:00:00.000Z",
+    "to": "2026-12-31T00:00:00.000Z",
+    "totals": {
+      "count": 1523,
+      "net_vnd": 152300000,
+      "fee_vnd": 1218400,
+      "usdt_amount": 6100
+    },
+    "by_direction": {
+      "buy": { "count": 1000, "net_vnd": 100000000, "fee_vnd": 800000, "usdt_amount": 4000 },
+      "sell": { "count": 523, "net_vnd": 52300000, "fee_vnd": 418400, "usdt_amount": 2100 }
+    }
+  }
+}
+```
+
+---
+
+### Rotate Callback Secret
+
+```
+PATCH /admin/callback-secret
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "secret": "new-secret-at-least-32-characters-long"
+}
+```
+
+**Logic:** Updates `callback_secret_current`. Previous secret stored as `callback_secret_previous` for dual-secret rotation window (5 minutes).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "rotated_at": "2026-05-11T02:30:00.000Z"
+  }
+}
+```
+
+**Error (400):** `Secret must be at least 32 characters`
+**Error (400):** `Rotation already in progress. Wait 5 minutes.`
+
+---
+
+## Config Endpoints
+
+### Get Fee Config
+
+```
+GET /config/fees
+```
+
+Returns global spreads, fee rates, and per-token (USDC, XLM) overrides.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "spread_buy": 50,
+    "spread_sell": 50,
+    "fee_rate_buy": 0.008,
+    "fee_rate_sell": 0.008,
+    "usdc_min_fee": 5000,
+    "xlm_min_fee": 5000,
+    "usdc_spread_buy": 50,
+    "usdc_spread_sell": 50,
+    "usdc_fee_rate_buy": 0.008,
+    "usdc_fee_rate_sell": 0.008,
+    "usdc_min_order_amount": 1,
+    "xlm_spread_buy": 50,
+    "xlm_spread_sell": 50,
+    "xlm_fee_rate_buy": 0.008,
+    "xlm_fee_rate_sell": 0.008,
+    "xlm_min_order_amount": 1
+  }
+}
+```
+
+---
+
+### Get Token Fee Config
+
+```
+GET /config/fee/:token
+```
+
+**Parameters:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `token` | string | Token code (`USDC` or `XLM`) |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "token": "USDC",
+    "buy": {
+      "spread": 50,
+      "fee_rate": 0.008,
+      "min_fee": 5000,
+      "min_order_amount": 1,
+      "max_order_amount": null,
+      "source": "binance"
+    },
+    "sell": { ... }
+  }
+}
+```
+
+**Error (404):**
+```json
+{ "success": false, "error": "Token config not found" }
+```
+
+---
+
+### Update Config (Admin)
+
+```
+PATCH /config
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+Content-Type: application/json
+```
+
+**Body (all fields optional):**
+```json
+{
+  "spread_buy": 50,
+  "spread_sell": 50,
+  "fee_rate_buy": 0.008,
+  "fee_rate_sell": 0.008,
+  "usdc_min_fee": 5000,
+  "xlm_min_fee": 5000,
+  "USDC_buy": { "spread": 50, "fee_rate": 0.008, "min_fee": 5000, "min_order_amount": 1, "max_order_amount": 100000 },
+  "USDC_sell": { "spread": 50, "fee_rate": 0.008, "min_fee": 5000 },
+  "XLM_buy": { "spread": 50, "fee_rate": 0.008, "min_fee": 5000 },
+  "XLM_sell": { "spread": 50, "fee_rate": 0.008, "min_fee": 5000 }
+}
+```
+
+**Response (200):** Same as `GET /config/fees` (updated values)
+
+**Error (400):**
+```json
+{ "success": false, "error": "No config fields provided" }
+```
+
+---
+
+## CMS Endpoints
+
+Internal admin panel API. JWT authentication required for all routes except `/cms/login` and `/cms/admins`.
+
+### CMS Login
+
+```
+POST /cms/login
+```
+
+**Body:**
+```json
+{
+  "email": "admin@example.com",
+  "password": "password123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "eyJhbGc...",
+    "token_type": "Bearer",
+    "expires_in": 43200
+  }
+}
+```
+
+---
+
+### Create Admin
+
+```
+POST /cms/admins
+```
+
+**Body:**
+```json
+{
+  "key": "cms-create-admin-key",
+  "email": "newadmin@example.com",
+  "password": "password123"
+}
+```
+
+Requires `CMS_CREATE_ADMIN_KEY` env var.
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "email": "newadmin@example.com"
+  }
+}
+```
+
+---
+
+### Create Partner
+
+```
+POST /cms/partner
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+**Body:**
+```json
+{
+  "name": "Partner Name",
+  "fee_buy": 0.001,
+  "fee_sell": 0.001,
+  "active": true
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "part_abc123",
+    "name": "Partner Name",
+    "key": "pk_live_abc...",
+    "fee_buy": 0.001,
+    "fee_sell": 0.001,
+    "active": true,
+    "created_at": "2026-05-11T02:30:00.000Z",
+    "updated_at": null
+  }
+}
+```
+
+---
+
+### List Partners
+
+```
+GET /cms/partner
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "part_abc123",
+      "name": "Partner Name",
+      "key": "pk_live_abc...",
+      "fee_buy": 0.001,
+      "fee_sell": 0.001,
+      "active": true,
+      "created_at": "2026-05-11T02:30:00.000Z",
+      "updated_at": null
+    }
+  ]
+}
+```
+
+---
+
+### Get Partner
+
+```
+GET /cms/partner/:id
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "part_abc123",
+    "name": "Partner Name",
+    "key": "pk_live_abc...",
+    "fee_buy": 0.001,
+    "fee_sell": 0.001,
+    "active": true,
+    "created_at": "2026-05-11T02:30:00.000Z",
+    "updated_at": null
+  }
+}
+```
+
+---
+
+### Get CMS Config
+
+```
+GET /cms/config
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+Returns per-token fee/spread config (creates defaults if missing).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "available_price_sources": ["binance", "okx", "bybit", "our"],
+    "configs": {
+      "usdc": {
+        "buy": { "source": "binance", "spread": 50, "fee_rate": 0.008, "min_fee": 5000, "min_order_amount": 1, "max_order_amount": null },
+        "sell": { "source": "binance", "spread": 50, "fee_rate": 0.008, "min_fee": 5000, "min_order_amount": 1, "max_order_amount": null }
+      },
+      "xlm": { "buy": {...}, "sell": {...} }
+    }
+  }
+}
+```
+
+---
+
+### Update CMS Config
+
+```
+PATCH /cms/config
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "usdc": {
+    "buy": { "spread": 50, "fee_rate": 0.008, "min_fee": 5000, "min_order_amount": 1, "max_order_amount": 100000 },
+    "sell": { "spread": 50, "fee_rate": 0.008 }
+  },
+  "xlm": {
+    "buy": { "spread": 50, "fee_rate": 0.008 },
+    "sell": { "spread": 50, "fee_rate": 0.008 }
+  }
+}
+```
+
+**Response (200):** Same format as `GET /cms/config` (updated values)
+
+**Error (400):**
+```json
+{ "success": false, "error": { "code": "VALIDATION_ERROR", "message": "No config fields provided" } }
+```
+
+---
+
+### Get Rates (Public)
+
+```
+GET /cms/rates
+```
+
+No authentication required. Returns our current buy/sell rates for USDC and XLM.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "usdc": { "buy": 26504, "sell": 26358 },
+    "xlm": { "buy": 4538, "sell": 4238 }
+  }
+}
+```
+
+---
+
+### Get Fee Audit Log
+
+```
+GET /cms/admin/audit
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+Returns last 50 fee config changes.
+
+**Response (200):**
+```json
+[
+  {
+    "id": "1",
+    "action": "UPDATE_CONFIG",
+    "details": "{\"key\":\"usdc_buy_spread\",\"old\":\"60\",\"new\":\"50\"}",
+    "createdAt": "2026-05-11T02:30:00.000Z",
+    "user": { "name": "admin@example.com", "email": "admin@example.com" }
+  }
+]
+```
+
+---
+
+### Get Buy Orders
+
+```
+GET /cms/orders/buy
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "updated_at": "2026-05-11T02:30:00.000Z",
+      "payment_code": "DHA1B2C3D4E5",
+      "transaction_hash": "abc123...",
+      "recipient": "GABC123...YZ",
+      "usdc_amount": 10,
+      "asset_code": "XLM",
+      "rate": 4490,
+      "net_vnd": 49490,
+      "fee_vnd": 5000,
+      "order_state": 3
+    }
+  ]
+}
+```
+
+---
+
+### Get Sell Orders
+
+```
+GET /cms/orders/sell
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "updated_at": "2026-05-11T02:30:00.000Z",
+      "payment_code": "DHZ9Y8X7W6V",
+      "transaction_hash": "def456...",
+      "usdc_amount": 10,
+      "asset_code": "XLM",
+      "rate": 4238,
+      "net_vnd": 42380,
+      "fee_vnd": 5000,
+      "order_state": 3,
+      "payment_info": { "bank_id": "970422", "bank_account_name": "NGUYEN VAN A", "bank_account_no": "0123456789" }
+    }
+  ]
+}
+```
+
+---
+
+### Change Admin Password
+
+```
+PATCH /cms/admin/password
+```
+
+**Headers:**
+```
+Authorization: Bearer <jwt>
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "currentPassword": "oldpassword",
+  "newPassword": "newpassword123"
+}
+```
+
+**Response (200):**
+```json
+{ "success": true }
+```
+
+**Error (400):** `New password must be at least 8 characters`
+**Error (401):** `Current password is incorrect`

@@ -7,14 +7,15 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
   app.post('/login', {
     schema: {
       tags: ['CMS'],
-      summary: 'CMS admin login (JWT)',
+      summary: 'CMS admin login',
+      description: 'Authenticates a CMS admin and returns a JWT. Token expires in 12 hours (configurable via ADMIN_JWT_TTL_SEC).',
       body: {
         type: 'object',
         additionalProperties: false,
         required: ['email', 'password'],
         properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string' },
+          email: { type: 'string', format: 'email', description: 'Admin email address' },
+          password: { type: 'string', description: 'Admin password' },
         },
       },
       response: {
@@ -32,6 +33,11 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
             },
           },
         },
+        401: {
+          type: 'object',
+          description: 'Invalid credentials.',
+          properties: { success: { type: 'boolean' }, error: { type: 'string' } },
+        },
       },
     },
   }, handleCmsLogin as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
@@ -40,19 +46,21 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags: ['CMS'],
       summary: 'Create a new admin account',
+      description: 'Creates a new admin. Requires CMS_CREATE_ADMIN_KEY env var to be set. Password must be at least 8 characters.',
       body: {
         type: 'object',
         additionalProperties: false,
         required: ['key', 'email', 'password'],
         properties: {
-          key: { type: 'string', description: 'CMS create-admin key' },
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 8 },
+          key: { type: 'string', description: 'CMS create-admin key (from CMS_CREATE_ADMIN_KEY env)' },
+          email: { type: 'string', format: 'email', description: 'New admin email (must be unique)' },
+          password: { type: 'string', minLength: 8, description: 'Password (min 8 characters)' },
         },
       },
       response: {
         201: {
           type: 'object',
+          description: 'Admin created.',
           properties: {
             success: { type: 'boolean' },
             data: {
@@ -60,6 +68,22 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
               properties: {
                 id: { type: 'number' },
                 email: { type: 'string' },
+              },
+            },
+          },
+        },
+        400: {
+          type: 'object',
+          description: 'Validation error (password too short, email taken, invalid key).',
+          properties: {
+            success: { type: 'boolean' },
+            error: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                message: { type: 'string' },
+                retriable: { type: 'boolean' },
+                trace_id: { type: 'string' },
               },
             },
           },
@@ -73,16 +97,17 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags: ['CMS'],
       summary: 'Create a new partner account',
+      description: 'Creates a partner with custom fee overrides (fee_buy/fee_sell). Each partner gets a unique API key.',
       security: [{ BearerAuth: [] }],
       body: {
         type: 'object',
         additionalProperties: false,
         required: ['name', 'fee_buy', 'fee_sell'],
         properties: {
-          name: { type: 'string' },
-          fee_buy: { type: 'number', minimum: 0 },
-          fee_sell: { type: 'number', minimum: 0 },
-          active: { type: 'boolean' },
+          name: { type: 'string', description: 'Partner display name' },
+          fee_buy: { type: 'number', minimum: 0, description: 'Custom buy fee rate (e.g. 0.001 = 0.1%)' },
+          fee_sell: { type: 'number', minimum: 0, description: 'Custom sell fee rate' },
+          active: { type: 'boolean', description: 'Whether partner API key is active (default true)' },
         },
       },
       response: {
@@ -113,7 +138,7 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'List partner configs',
+      summary: 'List all partner accounts',
       security: [{ BearerAuth: [] }],
       response: {
         200: {
@@ -146,14 +171,15 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Get partner config by ID',
+      summary: 'Get partner account by ID',
+      description: 'Returns full details for a single partner: id, name, API key, custom fee_buy/fee_sell overrides, and active status.',
       security: [{ BearerAuth: [] }],
       params: {
         type: 'object',
         additionalProperties: false,
         required: ['id'],
         properties: {
-          id: { type: 'string' },
+          id: { type: 'string', description: 'Partner ID (e.g. part_abc123)' },
         },
       },
       response: {
@@ -182,12 +208,12 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
   const tokenSideConfigSchema = {
     type: 'object',
     properties: {
-      spread: { type: 'number' },
-      fee_rate: { type: 'number' },
-      min_fee: { type: 'number' },
-      min_order_amount: { type: 'number' },
-      max_order_amount: { type: 'number' },
-      source: { type: 'string' },
+      spread: { type: 'number', description: 'Spread in VND' },
+      fee_rate: { type: 'number', description: 'Fee rate (e.g. 0.008 = 0.8%)' },
+      min_fee: { type: 'number', description: 'Minimum fee in VND' },
+      min_order_amount: { type: 'number', description: 'Minimum order amount in crypto units' },
+      max_order_amount: { type: 'number', description: 'Maximum order amount (null = unlimited)' },
+      source: { type: 'string', description: 'Price source: binance, okx, bybit, or our' },
     },
   };
 
@@ -223,12 +249,12 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     type: 'object',
     additionalProperties: false,
     properties: {
-      spread: { type: 'number' },
-      fee_rate: { type: 'number' },
-      min_fee: { type: 'number' },
-      min_order_amount: { type: 'number' },
-      max_order_amount: { type: 'number' },
-      source: { type: 'string' },
+      spread: { type: 'number', description: 'Spread in VND' },
+      fee_rate: { type: 'number', description: 'Fee rate' },
+      min_fee: { type: 'number', description: 'Minimum fee in VND' },
+      min_order_amount: { type: 'number', description: 'Minimum order amount' },
+      max_order_amount: { type: 'number', description: 'Maximum order amount' },
+      source: { type: 'string', description: 'Price source' },
     },
   };
 
@@ -245,7 +271,8 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Get per-token spreads and fee rates (creates defaults if missing)',
+      summary: 'Get per-token fee and spread configuration',
+      description: 'Returns current per-token (USDC, XLM) config for spreads, fee rates, min/max order amounts, and price sources. Creates default values if not yet set.',
       security: [{ BearerAuth: [] }],
       response: { 200: configResponseSchema },
     },
@@ -255,7 +282,8 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Update per-token spreads and fee rates',
+      summary: 'Update per-token fee and spread configuration',
+      description: 'Updates per-token config. All fields optional — only provided fields are changed. Changes are logged to fee_audit_log.',
       security: [{ BearerAuth: [] }],
       body: {
         type: 'object',
@@ -265,14 +293,33 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
           xlm: tokenPatchSchema,
         },
       },
-      response: { 200: configResponseSchema },
+      response: {
+        200: configResponseSchema,
+        400: {
+          type: 'object',
+          description: 'No config fields provided.',
+          properties: {
+            success: { type: 'boolean' },
+            error: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                message: { type: 'string' },
+                retriable: { type: 'boolean' },
+                trace_id: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
     },
   }, handlePatchCmsConfig as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 
   app.get('/rates', {
     schema: {
       tags: ['CMS'],
-      summary: 'Get buy and sell rates for all tokens (USDC, XLM)',
+      summary: 'Get current buy and sell rates for USDC and XLM (public)',
+      description: 'No authentication required. Returns our current buy/sell rates for USDC and XLM.',
       response: {
         200: {
           type: 'object',
@@ -295,11 +342,13 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Get last 50 fee config audit log entries',
+      summary: 'Get fee configuration audit log',
+      description: 'Returns last 50 fee config changes with old/new values and admin email.',
       security: [{ BearerAuth: [] }],
       response: {
         200: {
           type: 'array',
+          description: 'Array of audit log entries.',
           items: {
             type: 'object',
             properties: {
@@ -325,8 +374,21 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Get all buy orders',
+      summary: 'Get all buy (deposit) orders',
+      description: 'Returns all buy orders sorted by updated_at descending. Shows payment code, amount, rate, fees, recipient, transaction hash, and order state.',
       security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'array',
+              items: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+      },
     },
   }, handleGetBuyOrders as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 
@@ -334,8 +396,21 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Get all sell orders',
+      summary: 'Get all sell (withdrawal) orders',
+      description: 'Returns all sell orders sorted by updated_at descending. Shows payment code, amount, rate, fees, payment_info (bank details), transaction hash, and order state.',
       security: [{ BearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'array',
+              items: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+      },
     },
   }, handleGetSellOrders as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);
 
@@ -343,22 +418,22 @@ export async function cmsRoutes(app: FastifyInstance): Promise<void> {
     preHandler: adminAuth,
     schema: {
       tags: ['CMS'],
-      summary: 'Change admin password',
+      summary: 'Change own admin password',
+      description: 'Changes password for the authenticated admin. Requires correct current password.',
       security: [{ BearerAuth: [] }],
       body: {
         type: 'object',
         additionalProperties: false,
         required: ['currentPassword', 'newPassword'],
         properties: {
-          currentPassword: { type: 'string' },
-          newPassword: { type: 'string', minLength: 8 },
+          currentPassword: { type: 'string', description: 'Current password' },
+          newPassword: { type: 'string', minLength: 8, description: 'New password (min 8 characters)' },
         },
       },
       response: {
-        200: {
-          type: 'object',
-          properties: { success: { type: 'boolean' } },
-        },
+        200: { type: 'object', properties: { success: { type: 'boolean' } } },
+        400: { type: 'object', description: 'New password too short.', properties: { success: { type: 'boolean' }, error: { type: 'string' } } },
+        401: { type: 'object', description: 'Current password incorrect.', properties: { success: { type: 'boolean' }, error: { type: 'string' } } },
       },
     },
   }, handleChangePassword as (req: FastifyRequest, reply: FastifyReply) => Promise<void>);

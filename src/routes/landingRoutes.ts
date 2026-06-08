@@ -57,7 +57,8 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
   app.get('/p2p-rates', {
     schema: {
       tags: ['Landing Page'],
-      summary: 'Get all P2P rates (Binance, OKX, Bybit) and our price',
+      summary: 'Get all P2P rates (Binance, OKX, Bybit, our service)',
+      description: 'Returns best buy and sell prices from Binance, OKX, Bybit P2P markets plus our service rates for USDC and XLM. No authentication required.',
       response: {
         200: {
           type: 'object',
@@ -68,8 +69,8 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
                 usdc: {
                   type: 'object',
                   properties: {
-                    bestBuyPrice: { type: 'number', nullable: true },
-                    bestSellPrice: { type: 'number', nullable: true },
+                    bestBuyPrice: { type: 'number', nullable: true, description: 'Best buy price (null if no offers)' },
+                    bestSellPrice: { type: 'number', nullable: true, description: 'Best sell price (null if no offers)' },
                   },
                 },
                 xlm: {
@@ -149,19 +150,36 @@ export async function landingRoutes(app: FastifyInstance): Promise<void> {
           },
         },
       },
-    } as any,
+    },
   }, handleAllRates);
 
   app.get('/p2p-history', {
     schema: {
       tags: ['Landing Page'],
-      summary: 'Get price history for all exchanges (Binance, OKX, Bybit, Our)',
+      summary: 'Get P2P price history',
+      description: 'Returns historical best buy/sell prices for Binance, OKX, Bybit, and our service. Defaults to 7 days, max 30 days.',
       querystring: {
         type: 'object',
         properties: {
-          days: { type: 'integer', minimum: 1, maximum: 30 },
+          days: { type: 'integer', minimum: 1, maximum: 30, description: 'History window in days (default 7, max 30)' },
         },
       },
-    } as any,
+      response: {
+        200: {
+          type: 'object',
+          additionalProperties: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                created_at: { type: 'number', description: 'Unix timestamp' },
+                buy: { type: 'number', nullable: true },
+                sell: { type: 'number', nullable: true },
+              },
+            },
+          },
+        },
+      },
+    },
   }, handleAllHistory);
 }

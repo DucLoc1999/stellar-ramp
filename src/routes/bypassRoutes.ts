@@ -11,13 +11,29 @@ export async function bypassRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: BypassPaymentBody }>('/bypass-payment', {
     schema: {
       tags: ['Bypass'],
-      summary: 'Bypass payment for buy order (admin key)',
+      summary: 'Bypass buy order payment (dev/test only)',
+      description: '**For testing only.** Skips SePay webhook confirmation for buy orders. Directly moves order to PROCESSING and triggers USDC disbursement. Requires ADMIN_BOOTSTRAP_PASSWORD. Do not expose in production.',
       body: {
         type: 'object',
         required: ['admin_key', 'order_id'],
         properties: {
-          admin_key: { type: 'string' },
-          order_id: { type: 'integer' },
+          admin_key: { type: 'string', description: 'Value of ADMIN_BOOTSTRAP_PASSWORD env var' },
+          order_id: { type: 'integer', description: 'Numeric order ID to bypass' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          description: 'Payment bypassed successfully.',
+          properties: { success: { type: 'boolean' } },
+        },
+        400: {
+          type: 'object',
+          description: 'Bypass failed.',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+          },
         },
       },
     },
@@ -33,13 +49,29 @@ export async function bypassRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: BypassPaymentBody }>('/bypass-sell-payment', {
     schema: {
       tags: ['Bypass'],
-      summary: 'Bypass payment for sell order (admin key)',
+      summary: 'Bypass sell order payment (dev/test only)',
+      description: '**For testing only.** Skips chain webhook confirmation for sell orders. Simulates receiving crypto at hot wallet and triggers VND payout. Requires ADMIN_BOOTSTRAP_PASSWORD. Do not expose in production.',
       body: {
         type: 'object',
         required: ['admin_key', 'order_id'],
         properties: {
-          admin_key: { type: 'string' },
-          order_id: { type: 'integer' },
+          admin_key: { type: 'string', description: 'Value of ADMIN_BOOTSTRAP_PASSWORD env var' },
+          order_id: { type: 'integer', description: 'Numeric order ID to bypass' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          description: 'Payment bypassed successfully.',
+          properties: { success: { type: 'boolean' } },
+        },
+        400: {
+          type: 'object',
+          description: 'Bypass failed.',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+          },
         },
       },
     },

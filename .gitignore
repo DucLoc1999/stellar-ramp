@@ -28,5 +28,5 @@ skills-lock.json
 !scripts/setup-cicd-vars.sh
 
 # General ignore
-docs/
+#docs/
 scripts/
