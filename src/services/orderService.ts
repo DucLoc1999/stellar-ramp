@@ -852,11 +852,11 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     return { error: 'ORDER_NOT_ELIGIBLE' };
   }
 
-  const sepay_transaction_id = `bypass-${Date.now()}`;
+  const txHash = `bypass-${Date.now()}`;
   const [insertedWebhookLog] = await db('webhook_logs').insert({
-    sepay_transaction_id,
+    tx_hash: txHash,
     source: 'admin-bypass',
-    body: JSON.stringify({ bypass: true, orderId, sepay_transaction_id }),
+    body: JSON.stringify({ bypass: true, orderId, txHash }),
   }).returning('id');
   const webhookLogId = Number((insertedWebhookLog as any).id ?? insertedWebhookLog);
   try {

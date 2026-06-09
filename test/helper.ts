@@ -6,6 +6,7 @@ import { orderRoutes } from '../src/routes/orderRoutes';
 import { webhookRoutes } from '../src/routes/webhookRoutes';
 import { configRoutes } from '../src/routes/configRoutes';
 import { adminRoutes } from '../src/routes/adminRoutes';
+import { bypassRoutes } from '../src/routes/bypassRoutes';
 import { cmsRoutes } from '../src/routes/cmsRoutes';
 import { errorHandler } from '../src/middlewares/errorHandler';
 import db from '../src/db';
@@ -23,6 +24,7 @@ export async function buildApp() {
   await app.register(errorHandler);
   
   await app.register(adminRoutes);
+  await app.register(bypassRoutes);
   await app.register(cmsRoutes, { prefix: '/cms' });
   await app.register(configRoutes, { prefix: '/config' });
   await app.register(orderRoutes, { prefix: '/api/orders' });
@@ -118,7 +120,8 @@ async function setupTestTables() {
   // Webhook logs
   await db.schema.createTable('webhook_logs', (t) => {
     t.increments('id');
-    t.bigInteger('sepay_transaction_id').notNullable().unique();
+    t.bigInteger('sepay_transaction_id').nullable().unique();
+    t.string('tx_hash', 128).nullable().unique();
     t.string('source', 20);
     t.text('body');  // JSON stored as text in SQLite
     t.timestamp('created_at').defaultTo(db.fn.now());
