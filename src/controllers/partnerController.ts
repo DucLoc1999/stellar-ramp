@@ -17,6 +17,7 @@ function serializePartner(partner: PartnerRecord) {
     fee_buy: partner.fee_buy,
     fee_sell: partner.fee_sell,
     active: partner.active,
+    creator: partner.creator,
     created_at: partner.created_at instanceof Date ? partner.created_at.toISOString() : String(partner.created_at),
     updated_at: partner.updated_at instanceof Date
       ? partner.updated_at.toISOString()
@@ -47,6 +48,7 @@ export async function handleCreatePartner(
     fee_buy: body.fee_buy,
     fee_sell: body.fee_sell,
     active: body.active ?? true,
+    creator: req.admin?.id ?? null,
   });
 
   reply.code(201).send({ success: true, data: serializePartner(partner) });

@@ -11,6 +11,7 @@ export interface PartnerAuthContext {
 export interface PartnerRecord extends PartnerAuthContext {
   key: string;
   active: boolean;
+  creator: number | null;
   created_at: string | Date;
   updated_at?: string | Date | null;
 }
@@ -20,6 +21,7 @@ export interface CreatePartnerInput {
   fee_buy: number;
   fee_sell: number;
   active?: boolean;
+  creator?: number | null;
 }
 
 function toBoolean(value: unknown): boolean {
@@ -39,6 +41,7 @@ function normalizePartner(row: Record<string, unknown>): PartnerRecord {
     fee_buy: toNumber(row.fee_buy),
     fee_sell: toNumber(row.fee_sell),
     active: toBoolean(row.active),
+    creator: row.creator != null ? Number(row.creator) : null,
     created_at: row.created_at instanceof Date ? row.created_at : String(row.created_at ?? ''),
     updated_at: row.updated_at instanceof Date || row.updated_at === null || row.updated_at === undefined
       ? row.updated_at ?? null
@@ -85,6 +88,7 @@ export async function createPartner(input: CreatePartnerInput): Promise<PartnerR
     fee_buy: input.fee_buy,
     fee_sell: input.fee_sell,
     active: input.active ?? true,
+    creator: input.creator ?? null,
   });
 
   const row = await findPartnerById(id);
