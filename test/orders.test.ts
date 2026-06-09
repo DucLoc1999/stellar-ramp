@@ -340,6 +340,40 @@ describe('SePay webhook flow', () => {
     expect(Number(row.vnd_received)).toBe(netVnd);
   });
 
+  it('bypasses buy payment using tx_hash webhook log, not sepay_transaction_id', async () => {
+    process.env.ADMIN_BOOTSTRAP_PASSWORD = 'test-admin-key';
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/orders/deposit',
+      headers: PARTNER_HEADERS,
+      payload: DEPOSIT_WEBHOOK_BODY,
+    });
+    const orderId = create.json().data.id;
+
+    const bypass = await app.inject({
+      method: 'POST',
+      url: '/bypass-payment',
+      payload: {
+        admin_key: 'test-admin-key',
+        order_id: orderId,
+      },
+    });
+
+    expect(bypass.statusCode).toBe(200);
+    expect(bypass.json()).toEqual({ success: true });
+
+    const log = await db('webhook_logs').where({ source: 'admin-bypass' }).first();
+    expect(log).toBeDefined();
+    expect(log.tx_hash).toMatch(/^bypass-\d+$/);
+    expect(log.sepay_transaction_id).toBeNull();
+
+    const row = await db('orders').where({ id: orderId }).first();
+    expect(row.order_state).not.toBe(1);
+    expect(row.last_webhook_id).toBe(String(log.id));
+    expect(Number(row.vnd_received)).toBe(Number(row.net_vnd));
+  });
+
   it('deduplicates — second webhook with same id is ignored', async () => {
     const create = await app.inject({
       method: 'POST',
