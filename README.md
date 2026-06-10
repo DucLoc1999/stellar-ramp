@@ -1,97 +1,48 @@
-# payment_svc
+# payment_svc — Secure fiat ↔ USDC backend
 
-Price engine, fee management and SePay payment gateway integration.
+Reliable rails for partners to convert VND ↔ USDC using SePay for fiat collection and Stellar for USDC disbursement.
 
-## Architecture
-- Node.js + TypeScript (Fastify 4, PostgreSQL/Knex 3)
-- Cloudflare Worker (`stellar_signer_worker/`) for Stellar USDC payments
+Goals
+- Secure, auditable order lifecycle for partner integrations
+- Reliable webhook-driven fiat collection (SePay) and resilient disbursement pipeline
+- Safe Stellar payouts with an external signer worker and encrypted hot wallet secrets
 
-## Setup
-```bash
-npm install
-cp .env.example .env
-# Edit .env with your DB, SePay, and Worker credentials
-```
+Tech stack
+- Node.js + TypeScript, Fastify 4
+- PostgreSQL via Knex 3, Kafka (kafkajs)
+- Stellar SDK for USDC, Cloudflare Worker signer
+- SePay SDK for payment gateway integration
 
-## Development
-```bash
-npm run dev          # Watch mode (tsx)
-npm run build       # Build to dist/
-npm run start      # Run production build
-```
+Delivered features (headline)
+- Deposit & withdrawal order flows
+- Price engine with spreads and fee audit logs
+- SePay IPN handler with deduplication
+- Kafka-based disbursement pipeline → Stellar payouts
+- Signed, retryable callbacks with logging and replay protection
+- Admin endpoints for config and secret rotation
 
-## Workers
-```bash
-npm run worker:disburse  # Kafka consumer for USDC disbursement
-```
+Quickstart (very short)
+1. Install: `npm install`
+2. Copy env: `cp .env.example .env` and edit required vars
+3. Run migrations (Knex requires explicit env):
+   `DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... npx tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts`
+4. Start dev server: `npm run dev`
+5. Run worker: `npm run worker:disburse`
 
-## Production
-```bash
-./start-prod.sh    # Migrate → Build → Start
-```
+Important config
+See `.env.example` for all variables. Most-critical: `SEPAY_KEY`, `PARTNER_APP_KEY`, `CALLBACK_SIGNATURE_SECRET`, Kafka and Stellar credentials.
 
-## API Endpoints
-- `GET /health` — Health check
-- `/api/rate/*` — Price engine
-- `/api/orders/*` — Order management
-- `/config/*` — Configuration API
-- `/api/webhooks/sepay` — SePay IPN (requires `SEPAY_KEY`)
+Architecture (one line)
+Client → Fastify → Services → DB / Kafka → disburseWorker → Cloudflare signer → Stellar
 
-## Payment Flow
+Where to look next
+- `src/app.ts` — app factory and routes
+- `src/services/` — business logic (orderService, priceService, callbackService)
+- `src/workers/disburseWorker.ts` — Kafka consumer for disbursement
+- `docs/API_INTEGRATION.md` — integration details for partners
 
-### Deposit (Buy USDC)
-```
-Client → POST /api/orders/deposit
-    → Order created (state=CREATED)
-    → User transfers VND to SePay
-    → SePay webhook → confirmPayment
-    → Kafka: DISBURSE_CRYPTO
-    → disburseWorker → stellar_signer_worker
-    → USDC sent to recipient wallet
-    → Order state=COMPLETED
-```
+Troubleshooting (quick)
+- If disbursements fail: check Kafka connectivity, STELLAR_HOT_WALLET_ENCRYPTION_KEY, and worker logs
+- If callbacks fail: verify `CALLBACK_SIGNATURE_SECRET` and inspect `callback_logs`
 
-### Withdrawal (Sell USDC)
-```
-Client → POST /api/orders/withdrawal
-    → Order created (state=CREATED)
-    → External sends USDC to hot wallet
-    → Chain webhook → confirmPayment
-    → VND payout (stub)
-    → Order state=COMPLETED
-```
-
-## Order States
-| State | Name |
-|-------|------|
-| 1 | CREATED |
-| 2 | PROCESSING |
-| 3 | COMPLETED |
-| 4 | FAILED |
-| 5 | CANCELLED |
-
-### Processing Sub-states (state=2)
-| State | Name |
-|-------|------|
-| 10 | WAITING_FIAT_DEPOSIT |
-| 11 | FIAT_CONFIRMED |
-| 12 | FIAT_FAILED |
-| 13 | WAITING_USDC_TRANSFER |
-| 14 | USDC_SENT |
-| 15 | USDC_FAILED |
-| 16 | WAITING_ADMIN_APPROVAL |
-
-## Validation (Trustline Checks)
-
-**Payment service handles recipient/client wallet validation:**
-- `checkTrustline()` → validates recipient trustline via Horizon REST
-- Checks: exists, authorized, available limit
-- Returns granular errors: NO_TRUSTLINE, NOT_AUTHORIZED, INSUFFICIENT_LIMIT
-
-**Worker handles source wallet validation:**
-- Checks XLM balance ≥ 0.00001 (gas fees)
-- For tokens: checks source trustline + sufficient balance
-- Errors: INSUFFICIENT_GAS, WALLET_NO_TRUSTLINE, INSUFFICIENT_TOKEN_BALANCE
-
-## Env Variables
-See `.env.example` for required configuration.
+For full operational details, API examples and schema notes, see `docs/API_INTEGRATION.md` and the `src/` codebase.
