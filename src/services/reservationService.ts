@@ -115,20 +115,27 @@ async function refreshBalanceFromApi(token: string): Promise<string | null> {
   const walletAddress = (process.env.WALLET_ADDRESS || '').trim();
   const network = process.env.STELLAR_NETWORK || 'testnet';
 
+  console.log(`[Reservation] refreshBalanceFromApi: token=${token}, walletAddress=${walletAddress || '(not set)'}, network=${network}`);
+
   if (token === 'VND') {
     const result = await getAccountBalance();
+    console.log(`[Reservation] VND balance: success=${result.success}, availableBalance=${result.availableBalance}, error=${result.error}`);
     if (!result.success) return null;
     return String(result.availableBalance ?? 0);
   }
 
   if (token === 'USDC') {
     const { getUsdcBalance } = await import('./stellarService');
-    return getUsdcBalance(walletAddress, network);
+    const balance = await getUsdcBalance(walletAddress, network);
+    console.log(`[Reservation] USDC balance from Horizon: ${balance} for wallet ${walletAddress}`);
+    return balance;
   }
 
   if (token === 'XLM') {
     const { getXlmBalance } = await import('./stellarService');
-    return getXlmBalance(walletAddress, network);
+    const balance = await getXlmBalance(walletAddress, network);
+    console.log(`[Reservation] XLM balance from Horizon: ${balance} for wallet ${walletAddress}`);
+    return balance;
   }
 
   return null;
@@ -198,9 +205,15 @@ export async function reserveForOrder(params: {
 
   let balanceRaw = await client.get(balanceKey(token));
 
+  console.log(`[Reservation] reserveForOrder: paymentCode=${params.paymentCode}, direction=${params.direction}, token=${token}, amount=${params.amount}`);
+  console.log(`[Reservation] reserveForOrder: cached balanceRaw=${balanceRaw}, walletAddress=${(process.env.WALLET_ADDRESS || '').trim() || '(not set)'}`);
+
   if (!balanceRaw) {
+    console.log(`[Reservation] No cached balance for ${token}, refreshing from API...`);
     const fresh = await refreshBalanceFromApi(token);
+    console.log(`[Reservation] refreshBalanceFromApi(${token}) = ${fresh}`);
     if (fresh === null) {
+      console.log(`[Reservation] refreshBalanceFromApi returned null, returning RESERVATION_NOT_READY`);
       return { success: false, error: 'RESERVATION_NOT_READY' };
     }
     balanceRaw = toUnits(fresh).toString();
@@ -211,6 +224,11 @@ export async function reserveForOrder(params: {
     const paymentMap = mapKey(params.paymentCode);
     await client.watch(balanceKey(token), totalKey(token), paymentMap);
     const [currentBalance, reservedRaw, existing] = await client.mget(balanceKey(token), totalKey(token), paymentMap);
+
+    console.log(`[Reservation] reserveForOrder attempt ${attempt}: paymentCode=${params.paymentCode}, token=${token}, amount=${params.amount}, buffer=${process.env[`RESERVATION_BUFFER_${token}`] ?? '1'}`);
+    console.log(`[Reservation]   Redis state: currentBalance=${currentBalance}, reservedRaw=${reservedRaw}, existing=${existing}`);
+    console.log(`[Reservation]   walletAddress=${(process.env.WALLET_ADDRESS || '').trim() || '(not set)'}`);
+
     if (existing) {
       await client.unwatch();
       return { success: true };
@@ -222,7 +240,9 @@ export async function reserveForOrder(params: {
     const balanceUnits = BigInt(currentBalance);
     const reservedUnits = BigInt(reservedRaw ?? '0');
     const available = balanceUnits - reservedUnits - bufferUnits;
+    console.log(`[Reservation]   liquidity check: balanceUnits=${balanceUnits}, reservedUnits=${reservedUnits}, bufferUnits=${bufferUnits}, available=${available}, needed=${amountUnits}`);
     if (available < amountUnits) {
+      console.log(`[Reservation] INSUFFICIENT_LIQUIDITY: available=${available} < amountUnits=${amountUnits} for token=${token}`);
       await client.unwatch();
       return { success: false, error: 'INSUFFICIENT_LIQUIDITY' };
     }
@@ -300,15 +320,18 @@ export async function syncWalletBalances(): Promise<void> {
   const client = redis!;
   const walletAddress = (process.env.WALLET_ADDRESS || '').trim();
   if (!walletAddress) {
+    console.warn('[Reservation] syncWalletBalances: WALLET_ADDRESS not set, skipping');
     ready = false;
     return;
   }
   const network = process.env.STELLAR_NETWORK || 'testnet';
+  console.log(`[Reservation] syncWalletBalances: syncing USDC/XLM for wallet=${walletAddress}, network=${network}`);
   const { getUsdcBalance, getXlmBalance } = await import('./stellarService');
   const [usdc, xlm] = await Promise.all([
     getUsdcBalance(walletAddress, network),
     getXlmBalance(walletAddress, network),
   ]);
+  console.log(`[Reservation] syncWalletBalances: USDC=${usdc}, XLM=${xlm}`);
   const pipe = client.multi();
   pipe.set(balanceKey('USDC'), toUnits(usdc).toString(), 'EX', BALANCE_TTL_SEC);
   pipe.set(balanceKey('XLM'), toUnits(xlm).toString(), 'EX', BALANCE_TTL_SEC);
@@ -324,6 +347,7 @@ export async function syncVndBalance(): Promise<void> {
     ready = false;
     return;
   }
+  console.log(`[Reservation] syncVndBalance: availableBalance=${result.availableBalance}`);
   await client.set(balanceKey('VND'), toUnits(String(result.availableBalance ?? 0)).toString(), 'EX', BALANCE_TTL_SEC);
 }
 
@@ -366,6 +390,8 @@ export async function reconcileReservedTotalsFromDb(): Promise<void> {
       totals.set('VND', vndTotal);
     }
   }
+
+  console.log(`[Reservation] reconcileReservedTotalsFromDb: USDC=${totals.get('USDC')}, XLM=${totals.get('XLM')}, VND=${totals.get('VND')}`);
 
   const tx = client.multi();
   for (const [token, value] of totals.entries()) {
