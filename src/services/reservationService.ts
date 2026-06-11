@@ -196,8 +196,9 @@ export async function reserveForOrder(params: {
   if (!ready) return { success: false, error: 'RESERVATION_NOT_READY' };
   const client = redis!;
   const token = params.token.toUpperCase();
-  const amountUnits = toUnits(params.amount);
-  const vndAmountUnits = toUnits(params.vndAmount);
+  const isVnd = token === 'VND';
+  const amountUnits = isVnd ? BigInt(Math.round(Number(params.amount))) : toUnits(params.amount);
+  const vndAmountUnits = isVnd ? BigInt(Math.round(Number(params.vndAmount))) : toUnits(params.vndAmount);
   const bufferUnits = parseBufferUnits(token);
   const now = Date.now();
 
@@ -216,7 +217,7 @@ export async function reserveForOrder(params: {
       console.log(`[Reservation] refreshBalanceFromApi returned null, returning RESERVATION_NOT_READY`);
       return { success: false, error: 'RESERVATION_NOT_READY' };
     }
-    balanceRaw = toUnits(fresh).toString();
+    balanceRaw = isVnd ? String(Math.round(Number(fresh))) : toUnits(fresh).toString();
     await client.set(balanceKey(token), balanceRaw, 'EX', BALANCE_TTL_SEC);
   }
 
@@ -347,8 +348,9 @@ export async function syncVndBalance(): Promise<void> {
     ready = false;
     return;
   }
-  console.log(`[Reservation] syncVndBalance: availableBalance=${result.availableBalance}`);
-  await client.set(balanceKey('VND'), toUnits(String(result.availableBalance ?? 0)).toString(), 'EX', BALANCE_TTL_SEC);
+  const rawBalance = result.availableBalance ?? 0;
+  console.log(`[Reservation] syncVndBalance: availableBalance=${rawBalance}`);
+  await client.set(balanceKey('VND'), String(Math.round(rawBalance)), 'EX', BALANCE_TTL_SEC);
 }
 
 export async function reconcileReservedTotalsFromDb(): Promise<void> {
@@ -365,7 +367,7 @@ export async function reconcileReservedTotalsFromDb(): Promise<void> {
   const totals = new Map<string, bigint>([['USDC', 0n], ['XLM', 0n], ['VND', 0n]]);
   for (const row of buyRows) {
     const token = (row.asset_code || 'USDC').toUpperCase();
-    totals.set(token, toUnits(row.total || '0'));
+    totals.set(token, token === 'VND' ? BigInt(Math.round(Number(row.total || 0))) : toUnits(row.total || '0'));
   }
 
   const sellKeys: string[] = [];
