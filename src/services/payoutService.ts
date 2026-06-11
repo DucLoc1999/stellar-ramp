@@ -68,10 +68,14 @@ export async function getAccountBalance(forceStub = false): Promise<BalanceResul
 
     if (result.code === '00') {
       console.log(`[PayoutService] PAYOS fetch balance success`);
+      const rawBalance = result.data?.balance;
+      const rawAvailable = result.data?.availableBalance;
       return {
         success: true,
-        balance: result.data.balance,
-        availableBalance: result.data.availableBalance,
+        balance: typeof rawBalance === 'number' ? rawBalance : Number(rawBalance) || 0,
+        availableBalance: rawAvailable != null
+          ? (typeof rawAvailable === 'number' ? rawAvailable : Number(rawAvailable) || 0)
+          : (typeof rawBalance === 'number' ? rawBalance : Number(rawBalance) || 0),
       };
     } else {
       throw new Error(result.desc || 'Unknown error from PayOS');
