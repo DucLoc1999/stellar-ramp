@@ -83,7 +83,10 @@ async function initKafka(): Promise<boolean> {
 }
 
 async function emitToKafka(event: TokenTransferEvent): Promise<boolean> {
-  if (!producer) return false;
+  if (!producer) {
+    console.error('[StellarListener] Kafka producer not initialized, cannot emit');
+    return false;
+  }
 
   const topic = process.env.KAFKA_TOKEN_IN_TOPIC || 'stellar_token_in';
   try {
@@ -91,10 +94,19 @@ async function emitToKafka(event: TokenTransferEvent): Promise<boolean> {
       topic,
       messages: [{ key: event.txHash, value: JSON.stringify(event) }],
     });
-    console.log(`[StellarListener] ✅ Kafka emitted: ${event.txHash}, ${event.amount} ${event.asset}`);
+    console.log(`[StellarListener] Kafka emitted: tx=${event.txHash}, topic=${topic}, ${event.amount} ${event.asset}`);
     return true;
   } catch (error) {
-    console.error(`[StellarListener] ❌ Kafka emit error: ${(error as Error).message}`);
+    const err = error as Error;
+    let errType = 'Unknown';
+    if (err.message.includes('disconnected')) {
+      errType = 'ProducerDisconnected';
+    } else if (err.message.includes('timeout')) {
+      errType = 'KafkaTimeout';
+    } else if (err.message.includes('connection')) {
+      errType = 'ConnectionError';
+    }
+    console.error(`[StellarListener] Kafka emit error: tx=${event.txHash}, topic=${topic}, type=${errType}, message=${err.message}`);
     return false;
   }
 }
@@ -102,13 +114,18 @@ async function emitToKafka(event: TokenTransferEvent): Promise<boolean> {
 async function emitToFallback(event: TokenTransferEvent): Promise<boolean> {
   const url = process.env.STELLAR_LISTENER_FALLBACK_URL;
   if (!url) {
-    console.log('[StellarListener] Fallback URL not set');
+    console.error('[StellarListener] Fallback URL not set, cannot emit event');
     return false;
   }
 
+  const authToken = process.env.STELLAR_LISTENER_FALLBACK_AUTH_TOKEN;
+  const hasAuth = !!authToken;
+  const maskedToken = authToken ? `${authToken.slice(0, 8)}...` : 'none';
+
+  console.log(`[StellarListener] Fallback: POST ${url} for tx=${event.txHash}, auth=${maskedToken}`);
+
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const authToken = process.env.STELLAR_LISTENER_FALLBACK_AUTH_TOKEN;
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
@@ -122,14 +139,34 @@ async function emitToFallback(event: TokenTransferEvent): Promise<boolean> {
     });
 
     if (response.ok) {
-      console.log(`[StellarListener] ✅ Fallback POST success: ${event.txHash}`);
+      console.log(`[StellarListener] Fallback POST success: ${event.txHash}`);
       return true;
-    } else {
-      console.error(`[StellarListener] ❌ Fallback POST failed: ${response.status} ${response.statusText}`);
-      return false;
     }
+
+    let responseBody = 'unknown';
+    try {
+      responseBody = await response.text();
+      if (responseBody.length > 500) responseBody = responseBody.slice(0, 500) + '...';
+    } catch { /* ignore */ }
+
+    console.error(`[StellarListener] Fallback POST failed: tx=${event.txHash}, url=${url}, status=${response.status} ${response.statusText}, response=${responseBody}`);
+    return false;
   } catch (error) {
-    console.error(`[StellarListener] ❌ Fallback POST error: ${(error as Error).message}`);
+    const err = error as Error;
+    let errType = 'Unknown';
+    if (err.name === 'TimeoutError' || err.message.includes('timeout')) {
+      errType = 'Timeout';
+    } else if (err.message.includes('ECONNREFUSED')) {
+      errType = 'ConnectionRefused';
+    } else if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
+      errType = 'DNS/LookupFailure';
+    } else if (err.message.includes('ECONNRESET')) {
+      errType = 'ConnectionReset';
+    } else if (err.message.includes('fetch failed')) {
+      errType = 'FetchFailed';
+    }
+
+    console.error(`[StellarListener] Fallback POST error: tx=${event.txHash}, url=${url}, auth=${maskedToken}, type=${errType}, message=${err.message}`);
     return false;
   }
 }
@@ -138,13 +175,24 @@ async function emit(event: TokenTransferEvent): Promise<void> {
   if (producer) {
     const kafkaSuccess = await emitToKafka(event);
     if (kafkaSuccess) return;
+
+    console.log(`[StellarListener] Kafka failed for tx=${event.txHash}, trying fallback...`);
+
     if (process.env.STELLAR_LISTENER_FALLBACK_URL) {
-      await emitToFallback(event);
+      const fbResult = await emitToFallback(event);
+      if (!fbResult) {
+        console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, both Kafka and fallback failed`);
+      }
+    } else {
+      console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, Kafka failed and no fallback configured`);
     }
   } else if (process.env.STELLAR_LISTENER_FALLBACK_URL) {
-    await emitToFallback(event);
+    const fbResult = await emitToFallback(event);
+    if (!fbResult) {
+      console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, no Kafka and fallback failed`);
+    }
   } else {
-    console.error('[StellarListener] No output channel available for event:', event.txHash);
+    console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, no output channels configured`);
   }
 }
 
@@ -155,7 +203,7 @@ async function processTransaction(
   monitoredAssets: Asset[]
 ): Promise<void> {
   try {
-    console.log(`[StellarListener] 📥 New transaction: ${tx.hash}`);
+    console.log(`[StellarListener] New transaction: ${tx.hash}`);
 
     const operations = await tx.operations();
 
@@ -167,7 +215,7 @@ async function processTransaction(
       const assetCode = assetType === 'native' ? 'XLM' : (op.asset_code || '');
       const tokenIssuer = assetType === 'native' ? '' : (op.asset_issuer || '');
 
-      console.log(`[StellarListener] ⚡ Payment: ${op.amount} ${assetCode} from ${op.from.slice(0, 8)}... memo='${tx.memo || ''}' (type: ${assetType})`);
+      console.log(`[StellarListener] Payment: ${op.amount} ${assetCode} from ${op.from.slice(0, 8)}... memo='${tx.memo || ''}' (type: ${assetType})`);
 
       // For native XLM: always forward if there's a valid memo (sell order)
       // For non-native: check against monitored assets list
@@ -179,7 +227,7 @@ async function processTransaction(
       );
 
       if (!isMonitored && !isNativeWithMemo) {
-        console.log(`[StellarListener] ⏭ Skipped (not monitored): ${assetCode} (issuer: ${tokenIssuer || 'native'})`);
+        console.log(`[StellarListener] Skipped (not monitored): ${assetCode} (issuer: ${tokenIssuer || 'native'})`);
         continue;
       }
 
@@ -196,7 +244,7 @@ async function processTransaction(
         walletLabel,
       };
 
-      console.log(`[StellarListener] ➡ Emitting: ${op.amount} ${assetCode} → ${walletLabel}`);
+      console.log(`[StellarListener] Emitting: ${op.amount} ${assetCode} to ${walletLabel}`);
       await emit(event);
     }
   } catch (error) {
