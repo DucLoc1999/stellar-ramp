@@ -48,12 +48,17 @@ Replay protection: requests older than 5 minutes are rejected.
 
 ## Rate Endpoints
 
-Rate endpoints return **our** prices, not raw exchange prices. Rates are based on Binance P2P median with spread + fee applied. Rates are cached for 30 seconds. These endpoints are public (no authentication required).
+Rate endpoints return **our** prices, not raw exchange prices. Rates are based on Binance P2P median with spread + fee applied. Rates are cached for 30 seconds. These endpoints require `Partner-App-Key` authentication. Fees are calculated as token config fee + partner-specific fee.
 
 ### Get USDC/VND Rate
 
 ```
 GET /api/rate/usdt_vnd
+```
+
+**Headers:**
+```
+Partner-App-Key: <your-partner-key>
 ```
 
 **Response (200):**
@@ -74,6 +79,11 @@ GET /api/rate/usdt_vnd
 GET /api/rate/xlm_vnd
 ```
 
+**Headers:**
+```
+Partner-App-Key: <your-partner-key>
+```
+
 **Response (200):**
 ```json
 {
@@ -85,6 +95,8 @@ GET /api/rate/xlm_vnd
   "min_fee_vnd": 5000
 }
 ```
+
+> **Note:** `fee_rate_buy` and `fee_rate_sell` are the combined rate (token config fee + partner fee). `min_fee_vnd` is read from the token config in the database.
 
 ---
 

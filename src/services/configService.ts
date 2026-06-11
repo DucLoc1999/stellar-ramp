@@ -133,11 +133,11 @@ export async function getTokenSideConfigFromDb(token: string, side: TokenSide): 
     const parsed = JSON.parse(raw) as Partial<TokenSideConfig> & { source?: unknown };
     const source = typeof parsed.source === 'string' ? parsed.source.trim().toLowerCase() : undefined;
     return {
-      spread: Number(parsed.spread) || DEFAULT_TOKEN_CONFIG.spread,
-      fee_rate: Number(parsed.fee_rate) || DEFAULT_TOKEN_CONFIG.fee_rate,
-      min_fee: Number(parsed.min_fee) || DEFAULT_TOKEN_CONFIG.min_fee,
-      min_order_amount: Number(parsed.min_order_amount) || DEFAULT_TOKEN_CONFIG.min_order_amount,
-      max_order_amount: Number(parsed.max_order_amount) || DEFAULT_TOKEN_CONFIG.max_order_amount,
+      spread: Number(parsed.spread) ?? DEFAULT_TOKEN_CONFIG.spread,
+      fee_rate: Number(parsed.fee_rate) ?? DEFAULT_TOKEN_CONFIG.fee_rate,
+      min_fee: Number(parsed.min_fee) ?? DEFAULT_TOKEN_CONFIG.min_fee,
+      min_order_amount: Number(parsed.min_order_amount) ?? DEFAULT_TOKEN_CONFIG.min_order_amount,
+      max_order_amount: Number(parsed.max_order_amount) ?? DEFAULT_TOKEN_CONFIG.max_order_amount,
       source,
     };
   } catch {
