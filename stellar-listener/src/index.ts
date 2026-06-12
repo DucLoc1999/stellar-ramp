@@ -172,27 +172,24 @@ async function emitToFallback(event: TokenTransferEvent): Promise<boolean> {
 }
 
 async function emit(event: TokenTransferEvent): Promise<void> {
-  if (producer) {
+  const kafkaConfigured = !!process.env.KAFKA_BROKERS?.trim();
+
+  if (kafkaConfigured && producer) {
     const kafkaSuccess = await emitToKafka(event);
     if (kafkaSuccess) return;
 
     console.log(`[StellarListener] Kafka failed for tx=${event.txHash}, trying fallback...`);
+  } else if (!kafkaConfigured) {
+    console.log(`[StellarListener] Kafka not configured (KAFKA_BROKERS empty), skipping to fallback`);
+  }
 
-    if (process.env.STELLAR_LISTENER_FALLBACK_URL) {
-      const fbResult = await emitToFallback(event);
-      if (!fbResult) {
-        console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, both Kafka and fallback failed`);
-      }
-    } else {
-      console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, Kafka failed and no fallback configured`);
-    }
-  } else if (process.env.STELLAR_LISTENER_FALLBACK_URL) {
+  if (process.env.STELLAR_LISTENER_FALLBACK_URL) {
     const fbResult = await emitToFallback(event);
     if (!fbResult) {
-      console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, no Kafka and fallback failed`);
+      console.error(`[StellarListener] Event LOST: tx=${event.txHash}, fallback failed`);
     }
   } else {
-    console.error(`[StellarListener] Event LOST: tx=${event.txHash}, amount=${event.amount} ${event.asset}, no output channels configured`);
+    console.error(`[StellarListener] Event LOST: tx=${event.txHash}, no fallback configured`);
   }
 }
 

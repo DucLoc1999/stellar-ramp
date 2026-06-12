@@ -198,6 +198,8 @@ function firstInsertedId(result: unknown): number {
  * Keeps payment_status in sync until the column is fully deprecated.
  */
 function derivePaymentStatus(orderState: number): string {
+  if (orderState === OrderState.CANCELLED) return 'cancel';
+  if (orderState === OrderState.FAILED) return 'failed';
   if (orderState >= OrderState.PROCESSING) return 'payment_received';
   return 'pending';
 }
@@ -541,7 +543,10 @@ export async function cancelExpiredOrders(): Promise<number> {
   let cancelled = 0;
   for (const order of expiredOrders) {
     const result = await performCancel(order, 'ORDER_EXPIRED');
-    if (result.data) cancelled++;
+    if (result.data) {
+      cancelled++;
+      await rollbackReservation(order.payment_code);
+    }
   }
   return cancelled;
 }

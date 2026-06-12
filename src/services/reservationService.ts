@@ -5,7 +5,6 @@ import { getAccountBalance } from './payoutService';
 import { OrderState } from '../models/types';
 
 const MICRO_SCALE = 7;
-const RESERVATION_TTL_GRACE_MS = 5 * 60 * 1000;
 const BALANCE_TTL_SEC = 15;
 
 let redis: Redis | null = null;
@@ -159,17 +158,12 @@ export async function initReservationService(): Promise<void> {
 
 export function startReservationSchedulers(): NodeJS.Timeout[] {
   if (!isEnabled()) return [];
-  const sweepMs = Number(process.env.RESERVATION_SWEEP_INTERVAL_MS || 5000);
   const reconcileMs = Number(process.env.RESERVATION_RECONCILE_INTERVAL_MS || 60000);
-  const a = setInterval(() => {
-    pruneExpired(Date.now()).catch((err) => console.error('[Reservation] pruneExpired failed:', err));
-  }, sweepMs);
   const c = setInterval(() => {
     reconcileReservedTotalsFromDb().catch((err) => console.error('[Reservation] reconcile failed:', err));
   }, reconcileMs);
-  a.unref();
   c.unref();
-  return [a, c];
+  return [c];
 }
 
 export async function shutdownReservationService(): Promise<void> {
@@ -248,7 +242,7 @@ export async function reserveForOrder(params: {
       return { success: false, error: 'INSUFFICIENT_LIQUIDITY' };
     }
     const resKey = reservationKey(params.direction, params.paymentCode);
-    const ttlMs = Math.max(1000, params.expiresAt.getTime() - now + RESERVATION_TTL_GRACE_MS);
+    const expiresAtMs = params.expiresAt.getTime();
     const tx = client.multi();
     tx.incrby(totalKey(token), amountUnits.toString());
     tx.hset(resKey, {
@@ -259,11 +253,11 @@ export async function reserveForOrder(params: {
       vnd_amount_units: vndAmountUnits.toString(),
       state: 'reserved',
       reserved_at: String(now),
-      expires_at: String(params.expiresAt.getTime()),
+      expires_at: String(expiresAtMs),
     });
-    tx.pexpire(resKey, ttlMs);
-    tx.set(paymentMap, params.direction, 'PX', ttlMs);
-    tx.zadd(expiryZset, String(params.expiresAt.getTime()), `${params.direction}:${params.paymentCode}`);
+    tx.pexpireat(resKey, expiresAtMs);
+    tx.set(paymentMap, params.direction, 'PXAT', expiresAtMs);
+    tx.zadd(expiryZset, String(expiresAtMs), `${params.direction}:${params.paymentCode}`);
     const out = await tx.exec();
     if (out) return { success: true };
   }

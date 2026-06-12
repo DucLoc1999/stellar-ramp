@@ -22,6 +22,7 @@ p2p_prices.db
 skills-lock.json
 .agent/
 .agents/
+.opencode
 
 # Exceptions: allow CI/CD and deployment docs/scripts
 !docs/CICD_SETUP.md
