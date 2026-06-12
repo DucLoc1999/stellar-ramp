@@ -100,7 +100,7 @@ async function releaseReservationByKey(
     const amountUnits = BigInt(data.amount_units);
     const tx = client.multi();
     tx.hset(resKey, 'state', 'released', 'release_reason', reason, 'released_at', String(Date.now()));
-    tx.persist(resKey);
+    tx.del(resKey);
     tx.decrby(totalKey(data.token), amountUnits.toString());
     tx.del(mapKey(paymentCode));
     tx.zrem(expiryZset, `${direction}:${paymentCode}`);
@@ -242,7 +242,7 @@ export async function reserveForOrder(params: {
       return { success: false, error: 'INSUFFICIENT_LIQUIDITY' };
     }
     const resKey = reservationKey(params.direction, params.paymentCode);
-    const expiresAtMs = params.expiresAt.getTime();
+    const expiresAtMs = params.expiresAt.getTime() + 5000;
     const tx = client.multi();
     tx.incrby(totalKey(token), amountUnits.toString());
     tx.hset(resKey, {
@@ -286,7 +286,7 @@ export async function consumeReservation(paymentCode: string): Promise<boolean> 
     }
     const tx = client.multi();
     tx.hset(resKey, 'state', 'consumed', 'consumed_at', String(Date.now()));
-    tx.persist(resKey);
+    tx.del(resKey);
     tx.decrby(totalKey(data.token), data.amount_units);
     tx.del(mapKey(paymentCode));
     tx.zrem(expiryZset, `${direction}:${paymentCode}`);
