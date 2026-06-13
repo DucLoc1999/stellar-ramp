@@ -1277,3 +1277,346 @@ Content-Type: application/json
 
 **Error (400):** `New password must be at least 8 characters`
 **Error (401):** `Current password is incorrect`
+
+---
+
+## User & KYC Endpoints
+
+All user endpoints require `Partner-App-Key` authentication.
+
+### KYC with CCCD (ID Card)
+
+```
+POST /api/users/kyc/id-card
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Body:**
+```json
+{
+  "image_front": "<base64-encoded front image of CCCD>",
+  "image_back": "<base64-encoded back image of CCCD>",
+  "phone": "0901234567",
+  "email": "user@example.com"
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| image_front | string | Yes | Base64-encoded front side of Vietnamese ID card (CCCD) |
+| image_back | string | Yes | Base64-encoded back side of Vietnamese ID card (CCCD) |
+| phone | string | No* | Phone number |
+| email | string | No* | Email address |
+
+*At least one of `phone` or `email` is required.
+
+**Flow:**
+1. Images are uploaded to S3
+2. FPT AI Vision API extracts identity data from both sides
+3. If a user with the same ID number already exists, returns the existing user
+4. Otherwise creates a new user record and returns it
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "id_number": "001234567890",
+    "name": "NGUYEN VAN A",
+    "dob": "1990-01-15",
+    "sex": "Nam",
+    "nationality": "Việt Nam",
+    "home": "Hà Nội",
+    "address": "123 Đường ABC, Quận XYZ",
+    "doe": "2030-01-15",
+    "phone": "0901234567",
+    "email": "user@example.com",
+    "kyc_image_front": "https://s3.../kyc/1234_front.jpg",
+    "kyc_image_back": "https://s3.../kyc/1234_back.jpg",
+    "created_at": "2026-06-13T10:00:00.000Z",
+    "updated_at": "2026-06-13T10:00:00.000Z"
+  }
+}
+```
+
+**Error (400):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "At least one of phone or email is required",
+    "retriable": false,
+    "trace_id": "req-123"
+  }
+}
+```
+
+---
+
+### Get User Info
+
+```
+GET /api/users/:identifier?type=id
+```
+
+**Headers:**
+```
+Partner-App-Key: <your-partner-key>
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| identifier | string (path) | Yes | The value to search by |
+| type | string (query) | No | Lookup field: `id`, `phone`, `email`, or `cccd` (default: `id`) |
+
+**Examples:**
+```
+GET /api/users/1?type=id
+GET /api/users/0901234567?type=phone
+GET /api/users/user@example.com?type=email
+GET /api/users/001234567890?type=cccd
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "id_number": "001234567890",
+    "name": "NGUYEN VAN A",
+    "dob": "1990-01-15",
+    "sex": "Nam",
+    "nationality": "Việt Nam",
+    "home": "Hà Nội",
+    "address": "123 Đường ABC, Quận XYZ",
+    "doe": "2030-01-15",
+    "phone": "0901234567",
+    "email": "user@example.com",
+    "kyc_image_front": "https://s3.../kyc/1234_front.jpg",
+    "kyc_image_back": "https://s3.../kyc/1234_back.jpg",
+    "created_at": "2026-06-13T10:00:00.000Z",
+    "updated_at": "2026-06-13T10:00:00.000Z"
+  }
+}
+```
+
+**Error (404):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "USER_NOT_FOUND",
+    "message": "User not found",
+    "retriable": false,
+    "trace_id": "req-123"
+  }
+}
+```
+
+---
+
+## Payment Method Endpoints
+
+All payment method endpoints require `Partner-App-Key` authentication.
+
+### List Payment Methods
+
+```
+GET /api/users/:user_id/payment
+```
+
+**Headers:**
+```
+Partner-App-Key: <your-partner-key>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "type": "BANK",
+      "wallet_address": null,
+      "bank_id": 970422,
+      "full_name": "NGUYEN VAN A",
+      "bank_account": "0123456789",
+      "created_at": "2026-06-13T10:00:00.000Z",
+      "updated_at": "2026-06-13T10:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "type": "CRYPTO",
+      "wallet_address": "GABC123...YZ",
+      "bank_id": null,
+      "full_name": null,
+      "bank_account": null,
+      "created_at": "2026-06-13T10:00:00.000Z",
+      "updated_at": "2026-06-13T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### Add Payment Method
+
+```
+POST /api/users/:user_id/payment
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Body (Bank):**
+```json
+{
+  "type": "BANK",
+  "bank_id": 970422,
+  "full_name": "NGUYEN VAN A",
+  "bank_account": "0123456789"
+}
+```
+
+**Body (Crypto):**
+```json
+{
+  "type": "CRYPTO",
+  "wallet_address": "GABC123...YZ"
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| type | string | Yes | `BANK` or `CRYPTO` |
+| wallet_address | string | No* | Crypto wallet address (required if type=CRYPTO) |
+| bank_id | integer | No* | Bank BIN code (required if type=BANK) |
+| full_name | string | No* | Account holder name (required if type=BANK) |
+| bank_account | string | No* | Bank account number (required if type=BANK) |
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 3,
+    "user_id": 1,
+    "type": "BANK",
+    "wallet_address": null,
+    "bank_id": 970422,
+    "full_name": "NGUYEN VAN A",
+    "bank_account": "0123456789",
+    "created_at": "2026-06-13T10:00:00.000Z",
+    "updated_at": "2026-06-13T10:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Update Payment Method
+
+```
+PATCH /api/users/:user_id/payment/:payment_id
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Body (all fields optional):**
+```json
+{
+  "bank_id": 970415,
+  "full_name": "NGUYEN VAN B",
+  "bank_account": "9876543210"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 3,
+    "user_id": 1,
+    "type": "BANK",
+    "wallet_address": null,
+    "bank_id": 970415,
+    "full_name": "NGUYEN VAN B",
+    "bank_account": "9876543210",
+    "created_at": "2026-06-13T10:00:00.000Z",
+    "updated_at": "2026-06-13T10:05:00.000Z"
+  }
+}
+```
+
+**Error (404):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "PAYMENT_METHOD_NOT_FOUND",
+    "message": "Payment method not found",
+    "retriable": false,
+    "trace_id": "req-123"
+  }
+}
+```
+
+---
+
+### Delete Payment Method
+
+```
+DELETE /api/users/:user_id/payment/:payment_id
+```
+
+**Headers:**
+```
+Partner-App-Key: <your-partner-key>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 3,
+    "deleted": true
+  }
+}
+```
+
+**Error (404):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "PAYMENT_METHOD_NOT_FOUND",
+    "message": "Payment method not found",
+    "retriable": false,
+    "trace_id": "req-123"
+  }
+}
+```
