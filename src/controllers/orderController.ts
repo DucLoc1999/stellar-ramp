@@ -2,12 +2,14 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
   createDeposit,
   createWithdrawal,
+  createDepositV2,
+  createWithdrawalV2,
   getOrderById,
   getOrderByCode,
   cancelOrder,
   formatOrderResponse,
 } from '../services/orderService';
-import type { DepositRequest, WithdrawalRequest } from '../models/types';
+import type { DepositRequest, WithdrawalRequest, DepositV2Request, WithdrawalV2Request } from '../models/types';
 import { createErrorReply } from '../middlewares/errorHandler';
 
 async function resolveOrderByParam(id: string) {
@@ -157,4 +159,98 @@ export async function handleOrderCancel(
   const paymentCode = order?.payment_code || req.params.id;
   const url = `${process.env.DOMAIN || ''}/order/${paymentCode}?payment=cancel`;
   return reply.redirect(url, 302);
+}
+
+export async function handleDepositV2(
+  req: FastifyRequest<{ Body: DepositV2Request }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const amount = Number(req.body.amount);
+  if (!amount || amount <= 0) {
+    return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
+  }
+  try {
+    const data = await createDepositV2(req.body, { clientIp: req.ip, partner: req.partner });
+    return reply.send({ success: true, data });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg === 'USER_NOT_FOUND') {
+      return createErrorReply(reply, 'USER_NOT_FOUND', 'User not found', req.id);
+    }
+    if (errMsg === 'PAYMENT_METHOD_NOT_FOUND') {
+      return createErrorReply(reply, 'PAYMENT_METHOD_NOT_FOUND', 'Payment method not found or does not belong to user', req.id);
+    }
+    if (errMsg === 'PAYMENT_METHOD_TYPE_MISMATCH') {
+      return createErrorReply(reply, 'PAYMENT_METHOD_TYPE_MISMATCH', 'Payment method must be of type CRYPTO for deposit', req.id);
+    }
+    if (errMsg === 'PAYMENT_METHOD_MISSING_WALLET') {
+      return createErrorReply(reply, 'PAYMENT_METHOD_MISSING_WALLET', 'Payment method has no wallet address configured', req.id);
+    }
+    if (errMsg === 'RECIPIENT_NO_TRUSTLINE') {
+      return createErrorReply(reply, 'RECIPIENT_NO_TRUSTLINE', 'Recipient wallet does not have a trustline for USDC. Please set up a trustline before depositing.', req.id);
+    }
+    if (errMsg === 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED') {
+      return createErrorReply(reply, 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED', 'Recipient trustline is not authorized for receiving USDC', req.id);
+    }
+    if (errMsg === 'RECIPIENT_INSUFFICIENT_LIMIT') {
+      return createErrorReply(reply, 'RECIPIENT_INSUFFICIENT_LIMIT', 'Recipient trustline limit is insufficient for this deposit amount', req.id);
+    }
+    if (errMsg === 'UNSUPPORTED_TOKEN') {
+      return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
+    }
+    if (errMsg === 'XLM_MIN_AMOUNT_1') {
+      return createErrorReply(reply, 'INVALID_AMOUNT', 'Minimum XLM amount is 1 (required to activate new Stellar accounts)', req.id);
+    }
+    if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
+      return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
+    }
+    if (errMsg === 'RESERVATION_NOT_READY') {
+      return createErrorReply(reply, 'RESERVATION_NOT_READY', 'Liquidity reservation service is not ready', req.id);
+    }
+    if (errMsg === 'MAX_ORDER_EXCEEDED') {
+      return createErrorReply(reply, 'MAX_ORDER_EXCEEDED', 'Order amount exceeds the maximum allowed limit', req.id);
+    }
+    throw error;
+  }
+}
+
+export async function handleWithdrawalV2(
+  req: FastifyRequest<{ Body: WithdrawalV2Request }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const amount = Number(req.body.amount);
+  if (!amount || amount <= 0) {
+    return createErrorReply(reply, 'INVALID_AMOUNT', 'Amount must be a positive number', req.id);
+  }
+  try {
+    const data = await createWithdrawalV2(req.body, { clientIp: req.ip, partner: req.partner });
+    return reply.send({ success: true, data });
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg === 'USER_NOT_FOUND') {
+      return createErrorReply(reply, 'USER_NOT_FOUND', 'User not found', req.id);
+    }
+    if (errMsg === 'PAYMENT_METHOD_NOT_FOUND') {
+      return createErrorReply(reply, 'PAYMENT_METHOD_NOT_FOUND', 'Payment method not found or does not belong to user', req.id);
+    }
+    if (errMsg === 'PAYMENT_METHOD_TYPE_MISMATCH') {
+      return createErrorReply(reply, 'PAYMENT_METHOD_TYPE_MISMATCH', 'Payment method must be of type BANK for withdrawal', req.id);
+    }
+    if (errMsg === 'PAYMENT_METHOD_MISSING_BANK_INFO') {
+      return createErrorReply(reply, 'PAYMENT_METHOD_MISSING_BANK_INFO', 'Payment method is missing required bank information', req.id);
+    }
+    if (errMsg === 'UNSUPPORTED_TOKEN') {
+      return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
+    }
+    if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
+      return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
+    }
+    if (errMsg === 'RESERVATION_NOT_READY') {
+      return createErrorReply(reply, 'RESERVATION_NOT_READY', 'Liquidity reservation service is not ready', req.id);
+    }
+    if (errMsg === 'MAX_ORDER_EXCEEDED') {
+      return createErrorReply(reply, 'MAX_ORDER_EXCEEDED', 'Order amount exceeds the maximum allowed limit', req.id);
+    }
+    throw error;
+  }
 }

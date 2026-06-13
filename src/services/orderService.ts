@@ -9,9 +9,11 @@ import type { PartnerAuthContext } from './partnerService';
 import { executePayout, getAccountBalance } from './payoutService';
 import { emitOrderPaid } from './queueService';
 import { consumeReservation, releaseReservation, reserveForOrder, rollbackReservation } from './reservationService';
-import type { DepositRequest, WithdrawalRequest } from '../models/types';
+import type { DepositRequest, WithdrawalRequest, DepositV2Request, WithdrawalV2Request } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
 import { OrderState, ProcessingState } from '../models/types';
+import * as userService from './userService';
+import * as paymentMethodService from './paymentMethodService';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
@@ -875,4 +877,75 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     console.error(`[Bypass] confirmPayment failed for order ${orderId}:`, err);
     return { error: 'CONFIRMATION_FAILED' };
   }
+}
+
+export async function createDepositV2(
+  req: DepositV2Request,
+  options?: CreateOptions
+): Promise<Usdt247Order> {
+  const user = await userService.findById(req.user_id);
+  if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  const paymentMethod = await paymentMethodService.findById(req.payment_method_id);
+  if (!paymentMethod || paymentMethod.user_id !== req.user_id) {
+    throw new Error('PAYMENT_METHOD_NOT_FOUND');
+  }
+  if (paymentMethod.type !== 'CRYPTO') {
+    throw new Error('PAYMENT_METHOD_TYPE_MISMATCH');
+  }
+  if (!paymentMethod.wallet_address) {
+    throw new Error('PAYMENT_METHOD_MISSING_WALLET');
+  }
+
+  const depositReq: DepositRequest = {
+    amount: req.amount,
+    chain_id: req.chain_id,
+    token_address: req.token_address,
+    asset_code: req.asset_code,
+    recipient: paymentMethod.wallet_address,
+    callback: req.callback,
+    user_id: String(req.user_id),
+  };
+
+  return createDeposit(depositReq, options);
+}
+
+export async function createWithdrawalV2(
+  req: WithdrawalV2Request,
+  options?: CreateOptions
+): Promise<Usdt247Order> {
+  const user = await userService.findById(req.user_id);
+  if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  const paymentMethod = await paymentMethodService.findById(req.payment_method_id);
+  if (!paymentMethod || paymentMethod.user_id !== req.user_id) {
+    throw new Error('PAYMENT_METHOD_NOT_FOUND');
+  }
+  if (paymentMethod.type !== 'BANK') {
+    throw new Error('PAYMENT_METHOD_TYPE_MISMATCH');
+  }
+  if (!paymentMethod.bank_id || !paymentMethod.bank_account || !paymentMethod.full_name) {
+    throw new Error('PAYMENT_METHOD_MISSING_BANK_INFO');
+  }
+
+  const withdrawalReq: WithdrawalRequest = {
+    amount: req.amount,
+    chain_id: req.chain_id,
+    token_address: req.token_address,
+    asset_code: req.asset_code,
+    callback: req.callback,
+    user_id: String(req.user_id),
+    payment_info: {
+      bank_id: String(paymentMethod.bank_id),
+      full_name: paymentMethod.full_name,
+      account_type: 0,
+      account_number: paymentMethod.bank_account,
+    },
+  };
+
+  return createWithdrawal(withdrawalReq, options);
 }

@@ -54,6 +54,26 @@ export interface WithdrawalRequest {
   user_id?: string;
 }
 
+export interface DepositV2Request {
+  amount: string;
+  chain_id: number;
+  token_address?: string | null;
+  asset_code: string;
+  callback: string;
+  user_id: number;
+  payment_method_id: number;
+}
+
+export interface WithdrawalV2Request {
+  amount: string;
+  chain_id: number;
+  token_address?: string | null;
+  asset_code: string;
+  callback: string;
+  user_id: number;
+  payment_method_id: number;
+}
+
 export interface RateResult {
   buy_price: number;
   sell_price: number;

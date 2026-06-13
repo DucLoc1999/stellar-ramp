@@ -280,6 +280,118 @@ Partner-App-Key: <your-partner-key>
 
 ---
 
+### 2b. Create Deposit Order V2 (Buy Crypto — using Payment Method)
+
+```
+POST /api/orders/deposit_v2
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Body:**
+```json
+{
+  "amount": "100",
+  "chain_id": 1,
+  "asset_code": "USDC",
+  "token_address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "callback": "https://your-server.com/webhook",
+  "user_id": 1,
+  "payment_method_id": 2
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| amount | string | Yes | Amount to buy (e.g. "100") |
+| chain_id | integer | Yes | Network: 1=Stellar testnet, 0=Stellar mainnet |
+| asset_code | string | Yes | Token code: `USDC` or `XLM` |
+| token_address | string | No* | Token issuer. Required for USDC, empty for XLM |
+| callback | string | Yes | Webhook URL for state changes |
+| user_id | integer | Yes | ID of the registered user |
+| payment_method_id | integer | Yes | ID of user's CRYPTO payment method |
+
+*The `recipient` is automatically read from the payment method's `wallet_address` field.*
+
+**Validation:**
+- `user_id` must exist in the users table
+- `payment_method_id` must belong to `user_id`
+- Payment method must have `type = "CRYPTO"`
+- Payment method must have a non-empty `wallet_address`
+
+**Response (200):** Same format as `POST /api/orders/deposit`
+
+**Additional Error Codes:**
+| Code | Description |
+|------|-------------|
+| `USER_NOT_FOUND` | User ID does not exist |
+| `PAYMENT_METHOD_NOT_FOUND` | Payment method not found or doesn't belong to user |
+| `PAYMENT_METHOD_TYPE_MISMATCH` | Payment method must be CRYPTO type |
+| `PAYMENT_METHOD_MISSING_WALLET` | Payment method has no wallet address |
+
+---
+
+### 2c. Create Withdrawal Order V2 (Sell Crypto — using Payment Method)
+
+```
+POST /api/orders/withdrawal_v2
+```
+
+**Headers:**
+```
+Content-Type: application/json
+Partner-App-Key: <your-partner-key>
+```
+
+**Body:**
+```json
+{
+  "amount": "100",
+  "chain_id": 1,
+  "asset_code": "USDC",
+  "token_address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "callback": "https://your-server.com/webhook",
+  "user_id": 1,
+  "payment_method_id": 1
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| amount | string | Yes | Amount to sell |
+| chain_id | integer | Yes | Network: 1=Stellar testnet, 0=Stellar mainnet |
+| asset_code | string | Yes | Token code: `USDC` or `XLM` |
+| token_address | string | No* | Token issuer. Required for USDC, empty for XLM |
+| callback | string | Yes | Webhook URL for state changes |
+| user_id | integer | Yes | ID of the registered user |
+| payment_method_id | integer | Yes | ID of user's BANK payment method |
+
+*The `payment_info` (bank_id, full_name, account_number) is automatically read from the payment method.*
+
+**Validation:**
+- `user_id` must exist in the users table
+- `payment_method_id` must belong to `user_id`
+- Payment method must have `type = "BANK"`
+- Payment method must have `bank_id`, `full_name`, and `bank_account` populated
+
+**Response (200):** Same format as `POST /api/orders/withdrawal`
+
+**Additional Error Codes:**
+| Code | Description |
+|------|-------------|
+| `USER_NOT_FOUND` | User ID does not exist |
+| `PAYMENT_METHOD_NOT_FOUND` | Payment method not found or doesn't belong to user |
+| `PAYMENT_METHOD_TYPE_MISMATCH` | Payment method must be BANK type |
+| `PAYMENT_METHOD_MISSING_BANK_INFO` | Payment method is missing bank details |
+
+---
+
 ### 3. Get Order Status
 
 ```
@@ -1338,8 +1450,6 @@ Partner-App-Key: <your-partner-key>
     "doe": "2030-01-15",
     "phone": "0901234567",
     "email": "user@example.com",
-    "kyc_image_front": "https://s3.../kyc/1234_front.jpg",
-    "kyc_image_back": "https://s3.../kyc/1234_back.jpg",
     "created_at": "2026-06-13T10:00:00.000Z",
     "updated_at": "2026-06-13T10:00:00.000Z"
   }
@@ -1402,8 +1512,6 @@ GET /api/users/001234567890?type=cccd
     "doe": "2030-01-15",
     "phone": "0901234567",
     "email": "user@example.com",
-    "kyc_image_front": "https://s3.../kyc/1234_front.jpg",
-    "kyc_image_back": "https://s3.../kyc/1234_back.jpg",
     "created_at": "2026-06-13T10:00:00.000Z",
     "updated_at": "2026-06-13T10:00:00.000Z"
   }

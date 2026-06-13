@@ -12,6 +12,11 @@ interface KycIdCardBody {
   email?: string;
 }
 
+function formatUserResponse(user: Record<string, unknown>) {
+  const { kyc_image_front, kyc_image_back, ...rest } = user;
+  return rest;
+}
+
 interface GetUserParams {
   identifier: string;
 }
@@ -58,7 +63,7 @@ export async function handleGetUser(
     return createErrorReply(reply, 'USER_NOT_FOUND', 'User not found', req.id);
   }
 
-  return reply.send({ success: true, data: user });
+  return reply.send({ success: true, data: formatUserResponse(user as unknown as Record<string, unknown>) });
 }
 
 export async function handleKycIdCard(
@@ -96,7 +101,7 @@ export async function handleKycIdCard(
 
   const existing = await userService.findByIdNumber(idNumber);
   if (existing) {
-    return reply.send({ success: true, data: existing });
+    return reply.send({ success: true, data: formatUserResponse(existing as unknown as Record<string, unknown>) });
   }
 
   const dob = fptAiVisionService.parseDate(frontData.dob);
@@ -121,7 +126,7 @@ export async function handleKycIdCard(
     kyc_image_back: backUrl,
   });
 
-  return reply.status(201).send({ success: true, data: user });
+  return reply.status(201).send({ success: true, data: formatUserResponse(user as unknown as Record<string, unknown>) });
 }
 
 export async function handleListPayment(
