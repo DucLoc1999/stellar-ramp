@@ -1404,35 +1404,26 @@ POST /api/users/kyc/id-card
 
 **Headers:**
 ```
-Content-Type: application/json
+Content-Type: multipart/form-data
 Partner-App-Key: <your-partner-key>
 ```
 
-**Body:**
-```json
-{
-  "image_front": "<base64-encoded front image of CCCD>",
-  "image_back": "<base64-encoded back image of CCCD>",
-  "phone": "0901234567",
-  "email": "user@example.com"
-}
-```
-
-**Parameters:**
+**Form Data (multipart/form-data):**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| image_front | string | Yes | Base64-encoded front side of Vietnamese ID card (CCCD) |
-| image_back | string | Yes | Base64-encoded back side of Vietnamese ID card (CCCD) |
+| image_front | file | Yes | Front side of Vietnamese ID card (CCCD), JPEG/PNG |
+| image_back | file | Yes | Back side of Vietnamese ID card (CCCD), JPEG/PNG |
 | phone | string | No* | Phone number |
 | email | string | No* | Email address |
 
 *At least one of `phone` or `email` is required.
 
 **Flow:**
-1. Images are uploaded to S3
-2. FPT AI Vision API extracts identity data from both sides
-3. If a user with the same ID number already exists, returns the existing user
-4. Otherwise creates a new user record and returns it
+1. Images received as multipart files
+2. Files uploaded to S3 for persistent storage (audit)
+3. Raw image buffers sent directly to FPT AI Vision API for OCR (no URL needed — FPT receives file bytes directly)
+4. If a user with the same ID number already exists, returns the existing user
+5. Otherwise creates a new user record and returns it
 
 **Response (201):**
 ```json

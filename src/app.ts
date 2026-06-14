@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import multipart from '@fastify/multipart';
 import { priceRoutes } from './routes/priceRoutes';
 import { configRoutes } from './routes/configRoutes';
 import { orderRoutes } from './routes/orderRoutes';
@@ -28,6 +29,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'partner-app-key'],
     credentials: true,
+  });
+
+  await app.register(multipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024,
+    },
   });
 
   await app.register(swagger, {

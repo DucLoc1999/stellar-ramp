@@ -5,13 +5,6 @@ import * as paymentMethodService from '../services/paymentMethodService';
 import * as s3Service from '../services/s3Service';
 import * as fptAiVisionService from '../services/fptAiVisionService';
 
-interface KycIdCardBody {
-  image_front: string;
-  image_back: string;
-  phone?: string;
-  email?: string;
-}
-
 function formatUserResponse(user: Record<string, unknown>) {
   const { kyc_image_front, kyc_image_back, ...rest } = user;
   return rest;
@@ -67,16 +60,40 @@ export async function handleGetUser(
 }
 
 export async function handleKycIdCard(
-  req: FastifyRequest<{ Body: KycIdCardBody }>,
+  req: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  const { image_front, image_back, phone, email } = req.body;
+  let imageFrontBuffer: Buffer | null = null;
+  let imageBackBuffer: Buffer | null = null;
+  let phone: string | null = null;
+  let email: string | null = null;
+
+  for await (const part of req.parts()) {
+    if (part.type === 'file') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of part.file) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      if (part.fieldname === 'image_front') {
+        imageFrontBuffer = buffer;
+      } else if (part.fieldname === 'image_back') {
+        imageBackBuffer = buffer;
+      }
+    } else {
+      if (part.fieldname === 'phone') {
+        phone = part.value as string;
+      } else if (part.fieldname === 'email') {
+        email = part.value as string;
+      }
+    }
+  }
 
   if (!phone && !email) {
     return createErrorReply(reply, 'VALIDATION_ERROR', 'At least one of phone or email is required', req.id);
   }
 
-  if (!image_front || !image_back) {
+  if (!imageFrontBuffer || !imageBackBuffer) {
     return createErrorReply(reply, 'VALIDATION_ERROR', 'Both image_front and image_back are required', req.id);
   }
 
@@ -85,13 +102,13 @@ export async function handleKycIdCard(
   const backKey = `kyc/${timestamp}_back.jpg`;
 
   const [frontUrl, backUrl] = await Promise.all([
-    s3Service.uploadBase64Image(image_front, frontKey, 'image/jpeg'),
-    s3Service.uploadBase64Image(image_back, backKey, 'image/jpeg'),
+    s3Service.uploadFile(imageFrontBuffer, frontKey, 'image/jpeg'),
+    s3Service.uploadFile(imageBackBuffer, backKey, 'image/jpeg'),
   ]);
 
   const [frontData, backData] = await Promise.all([
-    fptAiVisionService.recognizeIdCard(frontUrl),
-    fptAiVisionService.recognizeIdCard(backUrl),
+    fptAiVisionService.recognizeIdCard(imageFrontBuffer, 'front.jpg'),
+    fptAiVisionService.recognizeIdCard(imageBackBuffer, 'back.jpg'),
   ]);
 
   const idNumber = frontData.id;

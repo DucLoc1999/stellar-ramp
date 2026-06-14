@@ -10,31 +10,15 @@ import {
   handleDeletePayment,
 } from '../controllers/userController';
 
-interface KycIdCardBody {
-  image_front: string;
-  image_back: string;
-  phone?: string;
-  email?: string;
-}
-
 export async function userRoutes(app: FastifyInstance): Promise<void> {
-  app.post<{ Body: KycIdCardBody }>('/kyc/id-card', {
+  app.post('/kyc/id-card', {
     preHandler: partnerAuth,
     schema: {
       security: [{ PartnerAppKey: [] }],
       tags: ['Users'],
       summary: 'KYC with CCCD (ID card)',
-      description: 'Submit front and back images of Vietnamese ID card (CCCD) as base64. Extracts identity data via FPT AI Vision and creates a user record.',
-      body: {
-        type: 'object',
-        required: ['image_front', 'image_back'],
-        properties: {
-          image_front: { type: 'string', description: 'Base64-encoded front image of CCCD' },
-          image_back: { type: 'string', description: 'Base64-encoded back image of CCCD' },
-          phone: { type: 'string', description: 'Phone number (at least phone or email required)' },
-          email: { type: 'string', description: 'Email address (at least phone or email required)' },
-        },
-      },
+      description: 'Submit front and back images of Vietnamese ID card (CCCD) as multipart/form-data. Extracts identity data via FPT AI Vision and creates a user record.',
+      consumes: ['multipart/form-data'],
       response: {
         201: {
           type: 'object',

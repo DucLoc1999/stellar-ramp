@@ -12,6 +12,26 @@ const s3Client = new S3Client({
 
 const bucket = process.env.AWS_S3_BUCKET || '';
 
+export async function uploadFile(
+  buffer: Buffer,
+  key: string,
+  contentType: string = 'image/jpeg',
+): Promise<string> {
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    }),
+  );
+
+  if (process.env.AWS_S3_ENDPOINT) {
+    return `${process.env.AWS_S3_ENDPOINT}/${bucket}/${key}`;
+  }
+  return `https://${bucket}.s3.${process.env.AWS_S3_REGION || 'ap-southeast-1'}.amazonaws.com/${key}`;
+}
+
 export async function uploadBase64Image(
   base64Data: string,
   key: string,
@@ -26,7 +46,6 @@ export async function uploadBase64Image(
       Key: key,
       Body: buffer,
       ContentType: contentType,
-      ACL: 'public-read',
     }),
   );
 

@@ -26,11 +26,11 @@ interface FptAiVisionResponse {
 const baseApiUrl = process.env.FPT_API_SERVICE_URL || '';
 const apiKey = process.env.FPT_API_SERVICE_KEY || '';
 
-export async function recognizeIdCard(imageUrl: string): Promise<FptAiVisionIdData> {
+export async function recognizeIdCard(imageBuffer: Buffer, filename: string = 'image.jpg'): Promise<FptAiVisionIdData> {
   const apiUrl = `${baseApiUrl}/idr/vnm`;
 
   const formData = new FormData();
-  formData.append('image_url', imageUrl);
+  formData.append('image', imageBuffer, { filename });
 
   const response = await axios.post<FptAiVisionResponse>(apiUrl, formData, {
     headers: {
