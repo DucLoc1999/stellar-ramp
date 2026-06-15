@@ -98,6 +98,26 @@ export async function createPartner(input: CreatePartnerInput): Promise<PartnerR
   return row;
 }
 
+export interface UpdatePartnerInput {
+  name?: string;
+  fee_buy?: number;
+  fee_sell?: number;
+  active?: boolean;
+}
+
+export async function updatePartner(id: string, input: UpdatePartnerInput): Promise<PartnerRecord | undefined> {
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name.trim();
+  if (input.fee_buy !== undefined) patch.fee_buy = input.fee_buy;
+  if (input.fee_sell !== undefined) patch.fee_sell = input.fee_sell;
+  if (input.active !== undefined) patch.active = input.active;
+
+  if (Object.keys(patch).length === 0) return findPartnerById(id);
+
+  await db('partners').where({ id }).update(patch);
+  return findPartnerById(id);
+}
+
 export async function ensureBootstrapPartner(): Promise<void> {
   const legacyKey = process.env.PARTNER_APP_KEY;
   if (!legacyKey) {
