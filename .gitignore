@@ -14,8 +14,9 @@ node_modules/
 # logs
 logs/
 
-# sqlite
-p2p_prices.db
+# data
+data/
+
 
 # agent
 .claude/
@@ -24,6 +25,7 @@ skills-lock.json
 .agents/
 .opencode
 graphify*
+openspec
  
 # Exceptions: allow CI/CD and deployment docs/scripts
 !docs/CICD_SETUP.md

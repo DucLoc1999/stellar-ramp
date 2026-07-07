@@ -1,4 +1,36 @@
-import { Kafka, Producer, logLevel } from 'kafkajs';
+import { readFileSync } from 'fs';
+import { Kafka, KafkaConfig, Producer, logLevel } from 'kafkajs';
+
+type SaslMechanism = 'plain' | 'scram-sha-256' | 'scram-sha-512';
+
+export function buildKafkaConfig(clientId: string): KafkaConfig {
+  const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
+
+  const config: KafkaConfig = {
+    clientId,
+    brokers,
+    logLevel: logLevel.WARN,
+  };
+
+  const caPath = process.env.KAFKA_SSL_CA_PATH;
+  if (caPath) {
+    config.ssl = {
+      rejectUnauthorized: true,
+      ca: [readFileSync(caPath, 'utf-8')],
+    };
+  } else if (process.env.KAFKA_SSL === 'true') {
+    config.ssl = true;
+  }
+
+  const username = process.env.KAFKA_SASL_USERNAME;
+  const password = process.env.KAFKA_SASL_PASSWORD;
+  if (username && password) {
+    const mechanism = (process.env.KAFKA_SASL_MECHANISM || 'scram-sha-256') as SaslMechanism;
+    config.sasl = { mechanism, username, password } as KafkaConfig['sasl'];
+  }
+
+  return config;
+}
 
 export interface DisburseCryptoEvent {
   orderId: number;
@@ -43,11 +75,7 @@ export async function initKafka(forceMode?: boolean): Promise<void> {
   }
 
   try {
-    producer = new Kafka({
-      clientId,
-      brokers,
-      logLevel: logLevel.WARN,
-    }).producer();
+    producer = new Kafka(buildKafkaConfig(clientId)).producer();
 
     await producer.connect();
     kafkaAvailable = true;

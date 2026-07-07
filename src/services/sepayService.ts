@@ -57,7 +57,11 @@ export async function handleSepayWebhook(payload: SepayWebhookPayload): Promise<
   }
 
   console.log('[sepay-webhook] net_vnd:', order.net_vnd, 'transferAmount:', payload.transferAmount);
-  if (payload.transferAmount < Number(order.net_vnd)) return;
+  const netVnd = Number(order.net_vnd);
+  if (payload.transferAmount < netVnd) return;
+  if (payload.transferAmount > netVnd) {
+    console.warn(`[sepay-webhook] ⚠ OVERPAYMENT for order ${paymentCode}: received ${payload.transferAmount}, expected ${netVnd}, surplus ${payload.transferAmount - netVnd} VND (sepay_tx=${payload.id}) — needs manual reconciliation`);
+  }
 
   await confirmPayment({
     payment_code: paymentCode,

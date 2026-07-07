@@ -1,6 +1,7 @@
 import db from '../db';
 import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
 import { OrderState } from '../models/types';
+import { fireCallback } from './callbackService';
 
 export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || '';
 export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
@@ -222,6 +223,17 @@ export async function disburseUSDC(
   const network = (process.env.STELLAR_NETWORK || 'testnet').toUpperCase();
   const tokenCode = assetCode || DEFAULT_ASSET_CODE;
 
+  // Idempotency guard: never disburse an order that is not awaiting disbursement.
+  // Protects against Kafka replay (fromBeginning) and duplicate/retried messages.
+  const order = await db('orders').where({ id: orderId }).first();
+  if (!order) {
+    return { hash: '', success: false, error: 'ORDER_NOT_FOUND' };
+  }
+  if (order.order_state !== OrderState.PROCESSING) {
+    console.log(`[StellarService] ⏭ Skipping disburse for order ${orderId}: state=${order.order_state} (already processed)`);
+    return { hash: order.transaction_hash || '', success: order.order_state === OrderState.COMPLETED, error: order.order_state === OrderState.COMPLETED ? undefined : 'ORDER_NOT_ELIGIBLE' };
+  }
+
   const result = await callWorker(
     recipientPublicKey,
     amount,
@@ -239,6 +251,11 @@ export async function disburseUSDC(
         order_state: OrderState.COMPLETED,
         processing_state: 14,
       });
+
+    if (order.callback) {
+      fireCallback(order.callback, orderId, OrderState.PROCESSING, OrderState.COMPLETED, 13, 14, result.hash)
+        .catch((err) => console.error('[StellarService] fireCallback failed:', err));
+    }
   } else {
     const errorMsg = (result.error || '').slice(0, 500);
 
@@ -252,6 +269,11 @@ export async function disburseUSDC(
         });
     } catch (dbErr) {
       console.error(`[StellarService] Failed to mark order ${orderId} as FAILED:`, dbErr);
+    }
+
+    if (order.callback) {
+      fireCallback(order.callback, orderId, OrderState.PROCESSING, OrderState.FAILED, 13, 15)
+        .catch((err) => console.error('[StellarService] fireCallback failed:', err));
     }
   }
 

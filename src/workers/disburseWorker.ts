@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { Kafka, Consumer, logLevel } from 'kafkajs';
+import { Kafka } from 'kafkajs';
 import { disburseUSDC } from '../services/stellarService';
-import { emitOrderPaid, OrderPaidEvent } from '../services/queueService';
+import { buildKafkaConfig, emitOrderPaid, OrderPaidEvent } from '../services/queueService';
 import { OrderState } from '../models/types';
 import db from '../db';
 
@@ -89,15 +89,10 @@ async function processDisburseEvent(message: DisburseMessage): Promise<void> {
 async function startWorker(): Promise<void> {
   console.log('[DisburseWorker] Starting worker, connecting to Kafka...');
 
-  const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
   const clientId = process.env.KAFKA_CLIENT_ID || 'payment_svc';
   const topic = process.env.KAFKA_DISBURSE_TOPIC || 'disburse_crypto';
 
-  const kafka = new Kafka({
-    clientId: `${clientId}-worker`,
-    brokers,
-    logLevel: logLevel.WARN,
-  });
+  const kafka = new Kafka(buildKafkaConfig(`${clientId}-worker`));
 
   const consumer = kafka.consumer({ groupId: `${clientId}-disburse-group` });
   await consumer.connect();

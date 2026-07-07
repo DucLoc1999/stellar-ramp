@@ -187,6 +187,22 @@ function firstRow<T>(result: T | T[]): T {
   return (Array.isArray(result) ? result[0] : result) as T;
 }
 
+// Stellar amounts have 7 decimal places. Compare in integer base units (stroops)
+// to avoid IEEE-754 float drift causing false AMOUNT_MISMATCH on exact payments.
+const STELLAR_SCALE = 7;
+
+function toStellarUnits(input: string | number): bigint {
+  const asString = String(input).trim();
+  if (!asString) return 0n;
+  const negative = asString.startsWith('-');
+  const unsigned = negative ? asString.slice(1) : asString;
+  const [wholeRaw, fracRaw = ''] = unsigned.split('.');
+  const whole = wholeRaw || '0';
+  const frac = (fracRaw + '0'.repeat(STELLAR_SCALE)).slice(0, STELLAR_SCALE);
+  const units = BigInt(whole) * 10n ** BigInt(STELLAR_SCALE) + BigInt(frac || '0');
+  return negative ? -units : units;
+}
+
 function firstInsertedId(result: unknown): number {
   if (Array.isArray(result)) return Number(result[0]);
   if (typeof result === 'object' && result !== null && 'id' in result) {
@@ -293,8 +309,6 @@ export async function confirmPayment(params: {
     return;
   }
 
-  const oldState = order.order_state || 0;
-
   await transitionOrder(order.id, {
     order_state: OrderState.PROCESSING,
     vnd_received: params.vnd_received,
@@ -309,16 +323,9 @@ export async function confirmPayment(params: {
   if (order.direction === 'buy' && order.recipient) {
     const usdtAmount = order.usdt_amount.toString();
     const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
-    const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
-    if (result.success && order.callback) {
-      fireCallback(order.callback, order.id, oldState, OrderState.COMPLETED, 10, 14, result.hash).catch((err) => console.error('[OrderService] fireCallback failed:', err));
-    } else if (!result.success && result.error) {
-      await transitionOrder(order.id, {
-        order_state: OrderState.FAILED,
-        processing_state: 15,
-        error_message: result.error,
-      });
-    }
+    // disburseUSDC owns the COMPLETED/FAILED transition and callback in both the
+    // Kafka-worker and direct-fallback paths, firing only after the crypto settles.
+    await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
   }
 }
 
@@ -711,14 +718,12 @@ export async function processSellPayment(params: {
     }
   }
 
-  // ── Exact amount matching ──
-  const orderUsdtAmount = typeof orderByCode.usdt_amount === 'string'
-    ? parseFloat(orderByCode.usdt_amount)
-    : orderByCode.usdt_amount;
-  const webhookAmount = parseFloat(amount);
+  // ── Exact amount matching (integer base units, not float) ──
+  const orderUnits = toStellarUnits(orderByCode.usdt_amount);
+  const webhookUnits = toStellarUnits(amount);
 
-  if (webhookAmount !== orderUsdtAmount) {
-    console.log(`[OrderService] ⏭ Rejecting: amount mismatch — received ${webhookAmount}, order expects exactly ${orderUsdtAmount}`);
+  if (webhookUnits !== orderUnits) {
+    console.log(`[OrderService] ⏭ Rejecting: amount mismatch — received ${amount}, order expects exactly ${orderByCode.usdt_amount}`);
     return { success: false, error: 'AMOUNT_MISMATCH' };
   }
 
