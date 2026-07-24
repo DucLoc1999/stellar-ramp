@@ -14,9 +14,6 @@ node_modules/
 # logs
 logs/
 
-# data
-data/
-
 
 # agent
 .claude/
@@ -32,5 +29,12 @@ openspec
 !scripts/setup-cicd-vars.sh
 
 # General ignore
-#docs/
+docs/
 scripts/
+data
+
+# Worker secrets
+*.dev.vars
+
+# Tests (not tracked)
+test/

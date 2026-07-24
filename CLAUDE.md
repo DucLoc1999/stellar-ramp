@@ -222,7 +222,7 @@ All via `import 'dotenv/config'`. See `.env.example`:
 | `KAFKA_CLIENT_ID` | Kafka client ID |
 | `KAFKA_DISBURSE_TOPIC` | Default: disburse_crypto |
 | `KAFKA_ORDER_PAID_TOPIC` | Default: order_paid |
-| `KAFKA_SSL_CA_PATH` | Path to CA cert for TLS verification (e.g. `/app/data/kafka_ca.cert`). Required for managed brokers (Aiven) |
+| `KAFKA_SSL_CA_PATH` | Path to CA cert for TLS verification (e.g. `/app/data/kafka_ca.pem`). Required for managed brokers (Aiven) |
 | `KAFKA_SSL` | Set `true` to enable TLS without a custom CA (ignored if `KAFKA_SSL_CA_PATH` set) |
 | `KAFKA_SASL_MECHANISM` | `plain` / `scram-sha-256` / `scram-sha-512` (default: scram-sha-256) |
 | `KAFKA_SASL_USERNAME` | SASL username (e.g. avnadmin) |

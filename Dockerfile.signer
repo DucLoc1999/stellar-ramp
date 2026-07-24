@@ -3,6 +3,8 @@
 FROM node:24-slim AS base
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Install deps (incl. wrangler devDependency) — do NOT set NODE_ENV=production here.
 COPY stellar_signer_worker/package.json stellar_signer_worker/package-lock.json ./
 RUN npm ci

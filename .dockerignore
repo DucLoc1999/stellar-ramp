@@ -1,6 +1,7 @@
 node_modules
 dist
 .env
+.dev.vars
 .git
 *.md
 logs

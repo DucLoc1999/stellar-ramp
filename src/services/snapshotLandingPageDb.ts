@@ -22,71 +22,98 @@ const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.r
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const P2P_PRICE_MAX_AGE_MS = Number(process.env.P2P_PRICE_MAX_AGE_MS || 120_000);
 
-const db = new DatabaseSync(DB_PATH);
+let db: DatabaseSync;
+let dbReadOnly = false;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS p2p_prices (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    exchange   TEXT    NOT NULL,
-    trade_type TEXT    NOT NULL,
-    asset      TEXT    NOT NULL,
-    fiat       TEXT    NOT NULL,
-    best_price REAL    NOT NULL,
-    created_at INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_p2p_exchange_created ON p2p_prices (exchange, created_at);
-`);
+try {
+  db = new DatabaseSync(DB_PATH);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS p2p_prices (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      exchange   TEXT    NOT NULL,
+      trade_type TEXT    NOT NULL,
+      asset      TEXT    NOT NULL,
+      fiat       TEXT    NOT NULL,
+      best_price REAL    NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_p2p_exchange_created ON p2p_prices (exchange, created_at);
+  `);
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('readonly database') || msg.includes('read-only')) {
+    console.warn(`[SnapshotDB] Database at ${DB_PATH} is read-only. Snapshot writes disabled: ${msg}`);
+    dbReadOnly = true;
+    // Open read-only so queries still work
+    try {
+      db = new DatabaseSync(DB_PATH, { readOnly: true });
+    } catch {
+      // Fallback: open default (may still fail on writes)
+      db = new DatabaseSync(DB_PATH);
+    }
+  } else {
+    throw err;
+  }
+}
 
 // Seed mock data if table is empty or stale (latest record > 1 day old)
-const countRow = db.prepare('SELECT COUNT(*) AS c FROM p2p_prices').get() as { c: number };
-const latestRow = db.prepare('SELECT MAX(created_at) AS ts FROM p2p_prices').get() as { ts: number | null };
-const isEmpty = countRow.c === 0 || latestRow.ts === null || Date.now() - latestRow.ts > 24 * 60 * 60 * 1000;
+if (!dbReadOnly) {
+  try {
+    const countRow = db.prepare('SELECT COUNT(*) AS c FROM p2p_prices').get() as { c: number };
+    const latestRow = db.prepare('SELECT MAX(created_at) AS ts FROM p2p_prices').get() as { ts: number | null };
+    const isEmpty = countRow.c === 0 || latestRow.ts === null || Date.now() - latestRow.ts > 24 * 60 * 60 * 1000;
 
-if (isEmpty) {
-  db.exec('DELETE FROM p2p_prices');
-  const insert = db.prepare(
-    'INSERT INTO p2p_prices (exchange, trade_type, asset, fiat, best_price, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  );
-  const MOCK_CONFIG: Record<Exchange, { buyBase: number; sellBase: number; drift: number }> = {
-    binance: { buyBase: 25_700, sellBase: 25_900, drift: 300 },
-    okx:     { buyBase: 25_650, sellBase: 25_850, drift: 280 },
-    bybit:   { buyBase: 25_680, sellBase: 25_880, drift: 320 },
-    our:     { buyBase: 25_600, sellBase: 25_950, drift: 300 },
-  };
-  const MOCK_ASSETS = {
-    USDC: { buyBase: 25_700, sellBase: 25_900, drift: 300 },
-    XLM:  { buyBase: 7_500, sellBase: 7_700, drift: 120 },
-  } as const;
-  const now = Date.now();
+    if (isEmpty) {
+      db.exec('DELETE FROM p2p_prices');
+      const insert = db.prepare(
+        'INSERT INTO p2p_prices (exchange, trade_type, asset, fiat, best_price, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      const MOCK_CONFIG: Record<Exchange, { buyBase: number; sellBase: number; drift: number }> = {
+        binance: { buyBase: 25_700, sellBase: 25_900, drift: 300 },
+        okx:     { buyBase: 25_650, sellBase: 25_850, drift: 280 },
+        bybit:   { buyBase: 25_680, sellBase: 25_880, drift: 320 },
+        our:     { buyBase: 25_600, sellBase: 25_950, drift: 300 },
+      };
+      const MOCK_ASSETS = {
+        USDC: { buyBase: 25_700, sellBase: 25_900, drift: 300 },
+        XLM:  { buyBase: 7_500, sellBase: 7_700, drift: 120 },
+      } as const;
+      const now = Date.now();
 
-  for (let day = 29; day >= 0; day--) {
-    const ts = now - day * 24 * 60 * 60 * 1000;
-    const noise = Math.sin(day * 0.7) * 0.5 + Math.cos(day * 1.3) * 0.5;
-    for (const exchange of ['binance', 'okx', 'bybit', 'our'] as Exchange[]) {
-      const { buyBase, sellBase, drift } = MOCK_CONFIG[exchange];
-      insert.run(exchange, 'buy', 'USDC', 'VND', Math.round(buyBase + noise * drift), ts);
-      insert.run(exchange, 'sell', 'USDC', 'VND', Math.round(sellBase + noise * drift), ts);
-      const xlm = MOCK_ASSETS.XLM;
-      insert.run(exchange, 'buy', 'XLM', 'VND', Math.round(xlm.buyBase + noise * xlm.drift), ts);
-      insert.run(exchange, 'sell', 'XLM', 'VND', Math.round(xlm.sellBase + noise * xlm.drift), ts);
+      for (let day = 29; day >= 0; day--) {
+        const ts = now - day * 24 * 60 * 60 * 1000;
+        const noise = Math.sin(day * 0.7) * 0.5 + Math.cos(day * 1.3) * 0.5;
+        for (const exchange of ['binance', 'okx', 'bybit', 'our'] as Exchange[]) {
+          const { buyBase, sellBase, drift } = MOCK_CONFIG[exchange];
+          insert.run(exchange, 'buy', 'USDC', 'VND', Math.round(buyBase + noise * drift), ts);
+          insert.run(exchange, 'sell', 'USDC', 'VND', Math.round(sellBase + noise * drift), ts);
+          const xlm = MOCK_ASSETS.XLM;
+          insert.run(exchange, 'buy', 'XLM', 'VND', Math.round(xlm.buyBase + noise * xlm.drift), ts);
+          insert.run(exchange, 'sell', 'XLM', 'VND', Math.round(xlm.sellBase + noise * xlm.drift), ts);
+        }
+      }
+
+      for (let hour = 23; hour >= 0; hour--) {
+        const ts = now - hour * 60 * 60 * 1000;
+        const noise = Math.sin(hour * 0.9) * 0.5 + Math.cos(hour * 0.4) * 0.5;
+        for (const exchange of ['binance', 'okx', 'bybit', 'our'] as Exchange[]) {
+          const { buyBase, sellBase, drift } = MOCK_CONFIG[exchange];
+          insert.run(exchange, 'buy', 'USDC', 'VND', Math.round(buyBase + noise * drift * 0.3), ts);
+          insert.run(exchange, 'sell', 'USDC', 'VND', Math.round(sellBase + noise * drift * 0.3), ts);
+          const xlm = MOCK_ASSETS.XLM;
+          insert.run(exchange, 'buy', 'XLM', 'VND', Math.round(xlm.buyBase + noise * xlm.drift * 0.3), ts);
+          insert.run(exchange, 'sell', 'XLM', 'VND', Math.round(xlm.sellBase + noise * xlm.drift * 0.3), ts);
+        }
+      }
     }
-  }
-
-  for (let hour = 23; hour >= 0; hour--) {
-    const ts = now - hour * 60 * 60 * 1000;
-    const noise = Math.sin(hour * 0.9) * 0.5 + Math.cos(hour * 0.4) * 0.5;
-    for (const exchange of ['binance', 'okx', 'bybit', 'our'] as Exchange[]) {
-      const { buyBase, sellBase, drift } = MOCK_CONFIG[exchange];
-      insert.run(exchange, 'buy', 'USDC', 'VND', Math.round(buyBase + noise * drift * 0.3), ts);
-      insert.run(exchange, 'sell', 'USDC', 'VND', Math.round(sellBase + noise * drift * 0.3), ts);
-      const xlm = MOCK_ASSETS.XLM;
-      insert.run(exchange, 'buy', 'XLM', 'VND', Math.round(xlm.buyBase + noise * xlm.drift * 0.3), ts);
-      insert.run(exchange, 'sell', 'XLM', 'VND', Math.round(xlm.sellBase + noise * xlm.drift * 0.3), ts);
-    }
+  } catch (err) {
+    console.warn('[SnapshotDB] Failed to seed mock data:', err instanceof Error ? err.message : err);
   }
 }
 
 export function insertSnapshot(snapshot: P2PSnapshot): void {
+  if (dbReadOnly) return;
   const now = Date.now();
   db.prepare(
     'INSERT INTO p2p_prices (exchange, trade_type, asset, fiat, best_price, created_at) VALUES (?, ?, ?, ?, ?, ?)'

@@ -10,9 +10,9 @@ http://localhost:3000
 
 ## Authentication
 
-### Client → Service (Partner-App-Key)
+### Client → Service (partner-app-key)
 
-All order API endpoints require the `Partner-App-Key` header.
+All order API endpoints require the `partner-app-key` header.
 
 ### Provider → Service Webhooks
 
@@ -21,15 +21,9 @@ All order API endpoints require the `Partner-App-Key` header.
 Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
 ```
 
-**Stellar incoming:**
+**Stellar incoming** (fallback when Kafka unavailable):
 ```
-Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
-```
-
-**Chain** uses HMAC signature auth:
-```
-X-Webhook-Timestamp: <unix-ms>
-X-Webhook-Signature: HMAC-SHA256(secret, timestamp + "." + body_hex)
+Authorization: Bearer <STELLAR_LISTENER_FALLBACK_AUTH_TOKEN>
 ```
 
 Replay protection: requests older than 5 minutes are rejected.
@@ -48,7 +42,7 @@ Replay protection: requests older than 5 minutes are rejected.
 
 ## Rate Endpoints
 
-Rate endpoints return **our** prices, not raw exchange prices. Rates are based on Binance P2P median with spread + fee applied. Rates are cached for 30 seconds. These endpoints require `Partner-App-Key` authentication. Fees are calculated as token config fee + partner-specific fee.
+Rate endpoints return **our** prices, not raw exchange prices. Rates are based on Binance P2P median with spread + fee applied. Rates are cached for 30 seconds. These endpoints require `partner-app-key` authentication. Fees are calculated as token config fee + partner-specific fee.
 
 ### Get USDC/VND Rate
 
@@ -58,7 +52,7 @@ GET /api/rate/usdt_vnd
 
 **Headers:**
 ```
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Response (200):**
@@ -81,7 +75,7 @@ GET /api/rate/xlm_vnd
 
 **Headers:**
 ```
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Response (200):**
@@ -111,7 +105,7 @@ POST /api/orders/deposit
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Buy USDC:**
@@ -197,7 +191,7 @@ POST /api/orders/withdrawal
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Sell USDC:**
@@ -289,7 +283,7 @@ POST /api/orders/deposit_v2
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Body:**
@@ -345,7 +339,7 @@ POST /api/orders/withdrawal_v2
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Body:**
@@ -400,7 +394,7 @@ GET /api/orders/:payment_code
 
 **Headers:**
 ```
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Response (200):**
@@ -433,7 +427,7 @@ POST /api/orders/:payment_code/cancel
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Body (optional):**
@@ -519,7 +513,7 @@ POST /api/webhooks/stellar-incoming
 
 **Headers:**
 ```
-Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>
+Authorization: Bearer <STELLAR_LISTENER_FALLBACK_AUTH_TOKEN>
 Content-Type: application/json
 ```
 
@@ -545,7 +539,7 @@ Content-Type: application/json
 }
 ```
 
-**Status: Not implemented.**
+**Note:** This endpoint is a fallback when Kafka is unavailable. The Stellar disburse worker normally receives events via Kafka.
 
 ---
 
@@ -643,6 +637,18 @@ All errors follow this format:
 | `INTERNAL_ERROR` | 500 | true | Internal server error |
 | `CHAIN_EVENT_MISMATCH` | 400 | false | Chain/Stellar event validation failed |
 | `UNSUPPORTED_TOKEN` | 400 | false | Token not supported |
+| `USER_NOT_FOUND` | 404 | false | User not found |
+| `PAYMENT_METHOD_NOT_FOUND` | 404 | false | Payment method not found |
+| `PAYMENT_METHOD_TYPE_MISMATCH` | 400 | false | Payment method type mismatch |
+| `PAYMENT_METHOD_MISSING_BANK_INFO` | 400 | false | Payment method missing bank info |
+| `PAYMENT_METHOD_MISSING_WALLET` | 400 | false | Payment method missing wallet address |
+| `INSUFFICIENT_LIQUIDITY` | 409 | false | Insufficient liquidity |
+| `RESERVATION_NOT_READY` | 503 | true | Liquidity reservation service not ready |
+| `MAX_ORDER_EXCEEDED` | 400 | false | Order amount exceeds maximum limit |
+| `PARTNER_NOT_FOUND` | 404 | false | Partner not found |
+| `RECIPIENT_NO_TRUSTLINE` | 400 | false | Recipient wallet has no USDC trustline |
+| `RECIPIENT_TRUSTLINE_NOT_AUTHORIZED` | 400 | false | Recipient trustline not authorized |
+| `RECIPIENT_INSUFFICIENT_LIMIT` | 400 | false | Recipient trustline limit insufficient |
 
 Every response includes `X-Trace-ID` header for debugging.
 
@@ -700,7 +706,7 @@ GET /api/orders/:id/cancel
 ### Get All P2P Rates
 
 ```
-GET /api/landing/p2p-rates
+GET /landing/p2p-rates
 ```
 
 **Response (200):**
@@ -724,7 +730,7 @@ GET /api/landing/p2p-rates
 ### Get P2P Price History
 
 ```
-GET /api/landing/p2p-history?days=7
+GET /landing/p2p-history?days=7
 ```
 
 **Querystring:**
@@ -751,7 +757,7 @@ GET /api/landing/p2p-history?days=7
 ### Bypass Buy Payment
 
 ```
-POST /api/bypass/bypass-payment
+POST /bypass-payment
 ```
 
 **Body:**
@@ -779,7 +785,7 @@ Possible errors: `INVALID_ADMIN_CODE`, `ORDER_NOT_FOUND`, `NOT_BUY_ORDER`, `ORDE
 ### Bypass Sell Payment
 
 ```
-POST /api/bypass/bypass-sell-payment
+POST /bypass-sell-payment
 ```
 
 **Body:**
@@ -1394,7 +1400,7 @@ Content-Type: application/json
 
 ## User & KYC Endpoints
 
-All user endpoints require `Partner-App-Key` authentication.
+All user endpoints require `partner-app-key` authentication.
 
 ### KYC with CCCD (ID Card)
 
@@ -1405,7 +1411,7 @@ POST /api/users/kyc/id-card
 **Headers:**
 ```
 Content-Type: multipart/form-data
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Form Data (multipart/form-data):**
@@ -1470,7 +1476,7 @@ GET /api/users/:identifier?type=id
 
 **Headers:**
 ```
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Parameters:**
@@ -1526,7 +1532,7 @@ GET /api/users/001234567890?type=cccd
 
 ## Payment Method Endpoints
 
-All payment method endpoints require `Partner-App-Key` authentication.
+All payment method endpoints require `partner-app-key` authentication.
 
 ### List Payment Methods
 
@@ -1536,7 +1542,7 @@ GET /api/users/:user_id/payment
 
 **Headers:**
 ```
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Response (200):**
@@ -1581,7 +1587,7 @@ POST /api/users/:user_id/payment
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Body (Bank):**
@@ -1640,7 +1646,7 @@ PATCH /api/users/:user_id/payment/:payment_id
 **Headers:**
 ```
 Content-Type: application/json
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Body (all fields optional):**
@@ -1693,7 +1699,7 @@ DELETE /api/users/:user_id/payment/:payment_id
 
 **Headers:**
 ```
-Partner-App-Key: <your-partner-key>
+partner-app-key: <your-partner-key>
 ```
 
 **Response (200):**
