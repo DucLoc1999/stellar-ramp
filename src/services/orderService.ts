@@ -3,7 +3,7 @@ import db from '../db';
 import { getQuote, getMinFee } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline } from './stellarService';
+import { triggerDisburse, disburseUSDC, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline, getUsdcBalance, getXlmBalance } from './stellarService';
 import { getConfigNumber, getTokenConfig } from './configService';
 import type { PartnerAuthContext } from './partnerService';
 import { executePayout, getAccountBalance } from './payoutService';
@@ -295,18 +295,20 @@ export async function confirmPayment(params: {
   payment_code: string;
   vnd_received: number;
   last_webhook_id?: string;
-}) {
+}): Promise<{ success: boolean; error?: string }> {
   const order = await db('orders')
     .where({ payment_code: params.payment_code, order_state: OrderState.CREATED })
     .first();
 
-  if (!order) return;
+  if (!order) {
+    return { success: false, error: 'ORDER_NOT_FOUND_OR_NOT_CREATED' };
+  }
 
   // Guard: reject payment on expired orders
   if (isOrderExpired(order)) {
     console.log(`[OrderService] ⏭ Rejecting payment for expired order: ${params.payment_code}`);
     await performCancel(order, 'ORDER_EXPIRED');
-    return;
+    return { success: false, error: 'ORDER_EXPIRED' };
   }
 
   await transitionOrder(order.id, {
@@ -323,10 +325,11 @@ export async function confirmPayment(params: {
   if (order.direction === 'buy' && order.recipient) {
     const usdtAmount = order.usdt_amount.toString();
     const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
-    // disburseUSDC owns the COMPLETED/FAILED transition and callback in both the
-    // Kafka-worker and direct-fallback paths, firing only after the crypto settles.
-    await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
+    const result = await triggerDisburse(order.id, order.recipient, usdtAmount, params.payment_code, order.token_address, assetCode);
+    return result;
   }
+
+  return { success: true };
 }
 
 export async function findPendingOrderByCode(payment_code: string) {
@@ -417,7 +420,9 @@ export async function createDeposit(
     throw error;
   }
   const order = firstRow<OrderRow>(updated as OrderRow | OrderRow[]);
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+  if (req.callback) {
+    fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+  }
   const walletAddress = process.env.WALLET_ADDRESS || '';
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
@@ -503,7 +508,9 @@ export async function createWithdrawal(
   if (!order) {
     throw new Error('Failed to create withdrawal order');
   }
-  fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+  if (req.callback) {
+    fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
+  }
 
   const walletAddress = process.env.WALLET_ADDRESS || '';
   return await toApiOrder(order as OrderRow, {
@@ -842,7 +849,7 @@ export async function bypassSellPayment(adminKey: string, orderId: number): Prom
   return result.success ? { success: true } : { error: result.error };
 }
 
-export async function bypassPayment(adminKey: string, orderId: number): Promise<{ success?: boolean; error?: string }> {
+export async function bypassPayment(adminKey: string, orderId: number): Promise<{ success?: boolean; error?: string; hash?: string }> {
   const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
   if (!bootstrapPassword || adminKey !== bootstrapPassword) {
     return { error: 'INVALID_ADMIN_CODE' };
@@ -853,8 +860,6 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     return { error: 'ORDER_NOT_FOUND' };
   }
 
-  const paymentCode = order.payment_code;
-
   if (order.direction !== 'buy') {
     return { error: 'NOT_BUY_ORDER' };
   }
@@ -864,6 +869,44 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     return { error: 'ORDER_NOT_ELIGIBLE' };
   }
 
+  const walletAddress = process.env.WALLET_ADDRESS || '';
+  if (!walletAddress) {
+    return { error: 'WALLET_ADDRESS_NOT_CONFIGURED' };
+  }
+
+  const network = process.env.STELLAR_NETWORK || 'testnet';
+  const usdtAmount = order.usdt_amount.toString();
+  const assetCode = order.asset_code || DEFAULT_ASSET_CODE;
+  const tokenAddress = order.token_address || '';
+
+  // Pre-flight: verify hot wallet has enough USDC
+  const hotWalletUsdc = parseFloat(await getUsdcBalance(walletAddress, network));
+  const requiredAmount = parseFloat(usdtAmount);
+  if (hotWalletUsdc < requiredAmount) {
+    console.error(`[Bypass] Insufficient hot wallet USDC: have ${hotWalletUsdc}, need ${requiredAmount}`);
+    return { error: `HOT_WALLET_INSUFFICIENT_USDC: available ${hotWalletUsdc}, required ${requiredAmount}` };
+  }
+
+  // Pre-flight: verify hot wallet has enough XLM for transaction fees
+  const hotWalletXlm = parseFloat(await getXlmBalance(walletAddress, network));
+  if (hotWalletXlm < 0.0001) {
+    console.error(`[Bypass] Insufficient hot wallet XLM for fees: ${hotWalletXlm}`);
+    return { error: `HOT_WALLET_INSUFFICIENT_XLM: available ${hotWalletXlm}` };
+  }
+
+  // Pre-flight: verify recipient still has a valid trustline
+  if (order.recipient) {
+    const trustline = await checkTrustline(order.recipient, assetCode, tokenAddress);
+    if (!trustline.exists) {
+      console.error(`[Bypass] Recipient ${order.recipient} has no trustline for ${assetCode}`);
+      return { error: 'RECIPIENT_TRUSTLINE_MISSING' };
+    }
+    if (!trustline.authorized) {
+      console.error(`[Bypass] Recipient ${order.recipient} trustline not authorized for ${assetCode}`);
+      return { error: 'RECIPIENT_TRUSTLINE_NOT_AUTHORIZED' };
+    }
+  }
+
   const txHash = `bypass-${Date.now()}`;
   const [insertedWebhookLog] = await db('webhook_logs').insert({
     tx_hash: txHash,
@@ -871,16 +914,32 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     body: JSON.stringify({ bypass: true, orderId, txHash }),
   }).returning('id');
   const webhookLogId = Number((insertedWebhookLog as any).id ?? insertedWebhookLog);
-  try {
-    await confirmPayment({
-      payment_code: paymentCode,
-      vnd_received: Number(order.net_vnd),
-      last_webhook_id: String(webhookLogId),
-    });
-    return { success: true };
-  } catch (err) {
-    console.error(`[Bypass] confirmPayment failed for order ${orderId}:`, err);
-    return { error: 'CONFIRMATION_FAILED' };
+
+  // Transition to PROCESSING state
+  await transitionOrder(orderId, {
+    order_state: OrderState.PROCESSING,
+    vnd_received: Number(order.net_vnd),
+    payment_confirmed_at: db.fn.now(),
+    last_webhook_id: String(webhookLogId),
+  });
+
+  // Consume reservation
+  await consumeReservation(order.payment_code);
+
+  // Call disburseUSDC directly (not via Kafka) to get immediate result
+  const disburseResult = await disburseUSDC(
+    orderId,
+    order.recipient,
+    usdtAmount,
+    order.payment_code,
+    tokenAddress,
+    assetCode
+  );
+
+  if (disburseResult.success) {
+    return { success: true, hash: disburseResult.hash };
+  } else {
+    return { success: false, error: disburseResult.error };
   }
 }
 

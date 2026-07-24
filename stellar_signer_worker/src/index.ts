@@ -249,6 +249,10 @@ async function checkSourceWallet(
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method === 'GET' && new URL(request.url).pathname === '/health') {
+      return jsonResponse({ status: 'ok' });
+    }
+
     if (request.method !== 'POST') {
       return new Response('Method Not Allowed', {
         status: 405,

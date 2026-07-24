@@ -70,6 +70,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(userRoutes, { prefix: '/api/users' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
 
+  app.post('/api/webhooks/sepay-ipn', async (request, reply) => {
+    logger.info({ body: request.body }, 'sepay-ipn webhook received');
+    return reply.status(200).send({ success: true });
+  });
+
   app.addHook('onReady', async () => {
     try {
       await runMigrations();

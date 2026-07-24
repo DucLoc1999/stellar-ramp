@@ -280,7 +280,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           description: 'Order cancelled successfully.',
           properties: {
             success: { type: 'boolean' },
-            data: { type: 'object' },
+            data: { type: 'object', additionalProperties: true },
           },
         },
         404: {

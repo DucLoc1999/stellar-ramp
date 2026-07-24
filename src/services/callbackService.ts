@@ -111,7 +111,7 @@ export async function fireCallback(
   newProcessingState?: number | null,
   txHash?: string | null
 ): Promise<void> {
-  const orderIdNum = Number(orderId);
+  if (!callbackUrl) return;
 
   const payload: WebhookEvent = {
     id: String(orderId),
@@ -131,8 +131,6 @@ export async function fireCallback(
   if (typeof newProcessingState === 'number') {
     payload.payload.new_order_processing_state = newProcessingState;
   }
-
-  if (!callbackUrl) return;
 
   console.log(`[Callback] fireCallback orderId=${orderId} url=${callbackUrl} stateChange=${oldState}→${newState}`);
 
