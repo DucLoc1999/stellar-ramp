@@ -71,4 +71,4 @@ services:
 
 networks:
   payment-network:
-    driver: bridge
+    external: true

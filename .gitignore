@@ -31,7 +31,7 @@ openspec
 # General ignore
 docs/
 scripts/
-data
+data/
 
 # Worker secrets
 *.dev.vars
