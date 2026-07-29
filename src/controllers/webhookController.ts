@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { SepayWebhookPayload } from '../models/types';
+import type { SepayWebhookPayload, SepayPgIpnPayload } from '../models/types';
 import { handleSepayWebhook as processSepayWebhook } from '../services/sepayService';
+import { handleIpn as processSepayPgIpn } from '../services/sepayPgIpnService';
 import { processSellPayment } from '../services/orderService';
 import { createErrorReply } from '../middlewares/errorHandler';
 
@@ -52,4 +53,18 @@ export async function handleStellarIncoming(
   }
 
   return reply.send({ success: true });
+}
+
+export async function handleSepayPgIpn(
+  req: FastifyRequest<{ Body: SepayPgIpnPayload }>,
+  reply: FastifyReply,
+  app: FastifyInstance,
+) {
+  try {
+    await processSepayPgIpn(req.body);
+    reply.send({ success: true });
+  } catch (err) {
+    app.log.error({ err }, 'sepay pg ipn processing error');
+    reply.code(500).send({ success: false, error: 'Processing failed' });
+  }
 }

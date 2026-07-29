@@ -543,6 +543,75 @@ Content-Type: application/json
 
 ---
 
+### 7. SePay Payment Gateway IPN (Buy — Card / E-Wallet)
+
+```
+POST /api/webhooks/sepay-ipn
+```
+
+**Authentication:**
+```
+X-Secret-Key: <SEPAY_PG_IPN_SECRET_KEY>
+```
+
+This header is checked against `SEPAY_PG_IPN_SECRET_KEY` env var. If the env var is empty, authentication is skipped.
+
+**Body:**
+```json
+{
+  "timestamp": 1746000000000,
+  "notification_type": "ORDER_PAID",
+  "order": {
+    "order_invoice_number": "DHA1B2C3D4E5",
+    "order_amount": "50000",
+    "order_currency": "VND"
+  },
+  "transaction": {
+    "transaction_id": "txn_abc123",
+    "transaction_status": "APPROVED",
+    "transaction_amount": "50000",
+    "transaction_currency": "VND"
+  },
+  "customer": {
+    "id": "cus_123"
+  }
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| timestamp | integer | Yes | Unix timestamp in milliseconds |
+| notification_type | string | Yes | `ORDER_PAID` or `TRANSACTION_VOID` |
+| order.order_invoice_number | string | Yes | Maps to payment_code (DH...) |
+| order.order_amount | string | No | Order amount |
+| order.order_currency | string | No | Order currency |
+| transaction.transaction_id | string | Yes | Unique transaction ID (deduplication key) |
+| transaction.transaction_status | string | Yes | `APPROVED` or `DECLINED` |
+| transaction.transaction_amount | string | Yes | Transaction amount |
+
+**Behavior:**
+- `ORDER_PAID` + `APPROVED`: Confirms payment, transitions order to PROCESSING, triggers USDC disbursement
+- `ORDER_PAID` + `DECLINED`: Ignored (no state change)
+- `TRANSACTION_VOID`: Transitions order to FAILED, fires callback to client
+
+**Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+**Response (401 — auth failure):**
+```json
+{
+  "success": false,
+  "error": "Unauthorized"
+}
+```
+
+---
+
 ## Webhook Callback to Client
 
 Service POSTs to client's `callback` URL when order state changes.
