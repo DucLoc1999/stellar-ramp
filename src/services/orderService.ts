@@ -374,8 +374,9 @@ export async function createDeposit(
     throw new Error('UNSUPPORTED_TOKEN');
   }
 
-  if (req.asset_code.toUpperCase() === 'XLM' && Number(req.amount) < 1) {
-    throw new Error('XLM_MIN_AMOUNT_1');
+  const minOrder = await getTokenConfig(req.asset_code, 'buy', 'min_order_amount');
+  if (Number(req.amount) < minOrder) {
+    throw new Error('MIN_ORDER_NOT_MET');
   }
 
   // Fund recipient account if it doesn't exist on Stellar
@@ -479,6 +480,10 @@ export async function createWithdrawal(
     throw new Error('UNSUPPORTED_TOKEN');
   }
   const usdtAmount = Number(req.amount);
+  const minOrder = await getTokenConfig(req.asset_code, 'sell', 'min_order_amount');
+  if (usdtAmount < minOrder) {
+    throw new Error('MIN_ORDER_NOT_MET');
+  }
   const maxOrder = await getTokenConfig(req.asset_code, 'sell', 'max_order_amount');
   if (usdtAmount > maxOrder) {
     throw new Error('MAX_ORDER_EXCEEDED');

@@ -56,8 +56,8 @@ export async function handleDeposit(
     if (errMsg === 'UNSUPPORTED_TOKEN') {
       return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
     }
-    if (errMsg === 'XLM_MIN_AMOUNT_1') {
-      return createErrorReply(reply, 'INVALID_AMOUNT', 'Minimum XLM amount is 1 (required to activate new Stellar accounts)', req.id);
+    if (errMsg === 'MIN_ORDER_NOT_MET') {
+      return createErrorReply(reply, 'MIN_ORDER_NOT_MET', 'Order amount is below the minimum allowed limit', req.id);
     }
     if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
       return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
@@ -85,6 +85,9 @@ export async function handleWithdrawal(
     return reply.send({ success: true, data });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg === 'MIN_ORDER_NOT_MET') {
+      return createErrorReply(reply, 'MIN_ORDER_NOT_MET', 'Order amount is below the minimum allowed limit', req.id);
+    }
     if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
       return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
     }
@@ -198,8 +201,8 @@ export async function handleDepositV2(
     if (errMsg === 'UNSUPPORTED_TOKEN') {
       return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
     }
-    if (errMsg === 'XLM_MIN_AMOUNT_1') {
-      return createErrorReply(reply, 'INVALID_AMOUNT', 'Minimum XLM amount is 1 (required to activate new Stellar accounts)', req.id);
+    if (errMsg === 'MIN_ORDER_NOT_MET') {
+      return createErrorReply(reply, 'MIN_ORDER_NOT_MET', 'Order amount is below the minimum allowed limit', req.id);
     }
     if (errMsg === 'INSUFFICIENT_LIQUIDITY') {
       return createErrorReply(reply, 'INSUFFICIENT_LIQUIDITY', 'Insufficient available liquidity for this order', req.id);
