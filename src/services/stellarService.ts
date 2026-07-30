@@ -212,6 +212,51 @@ async function callWorker(
   };
 }
 
+export interface FundWalletResult {
+  success: boolean;
+  hash: string;
+  already_exists: boolean;
+  error?: string;
+}
+
+export async function fundWallet(
+  destination: string,
+  startingBalance?: string
+): Promise<FundWalletResult> {
+  const workerUrl = (process.env.WORKER_URL || DEFAULT_WORKER_URL) + '/fund';
+  const authToken = process.env.WORKER_AUTH_TOKEN;
+
+  if (!authToken) throw new Error('WORKER_AUTH_TOKEN not configured');
+
+  const network = (process.env.STELLAR_NETWORK || 'testnet').toUpperCase();
+
+  const response = await fetch(workerUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      destination,
+      starting_balance: startingBalance || '2.5',
+      network,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    return { success: false, hash: '', already_exists: false, error: `Worker error ${response.status}: ${errorText}` };
+  }
+
+  const data = await response.json() as { success: boolean; hash?: string; already_exists?: boolean; error?: string };
+
+  if (!data.success) {
+    return { success: false, hash: data.hash || '', already_exists: false, error: data.error || 'Worker returned failure' };
+  }
+
+  return { success: true, hash: data.hash || '', already_exists: data.already_exists ?? false };
+}
+
 export async function disburseUSDC(
   orderId: number,
   recipientPublicKey: string,

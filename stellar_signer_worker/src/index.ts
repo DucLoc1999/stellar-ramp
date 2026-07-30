@@ -39,8 +39,21 @@ type ParsedRequest = {
 type HorizonServer = InstanceType<typeof StellarSdk.Horizon.Server>;
 type HorizonAccount = Awaited<ReturnType<HorizonServer['loadAccount']>>;
 
+type FundRequestBody = {
+  destination?: unknown;
+  starting_balance?: unknown;
+  network?: unknown;
+};
+
+type ParsedFundRequest = {
+  destination: string;
+  startingBalance: string;
+  network: 'TESTNET' | 'PUBLIC';
+};
+
 const STROOP_SCALE = 10n ** 7n;
 const MIN_XLM_BALANCE = '0.00001';
+const DEFAULT_STARTING_BALANCE = '2.5';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -179,6 +192,25 @@ function parsePaymentRequest(body: PaymentRequestBody): ParsedRequest {
   };
 }
 
+function parseFundRequest(body: FundRequestBody): ParsedFundRequest {
+  const destination = typeof body.destination === 'string' ? body.destination.trim() : '';
+  const startingBalanceRaw = typeof body.starting_balance === 'string' ? body.starting_balance.trim() : '';
+  const networkRaw = typeof body.network === 'string' ? body.network.trim().toUpperCase() : '';
+
+  if (!destination) throw new Error('destination is required');
+  if (!StellarSdk.StrKey.isValidEd25519PublicKey(destination)) throw new Error('destination must be a valid Stellar public key');
+
+  const startingBalance = startingBalanceRaw || DEFAULT_STARTING_BALANCE;
+  const numericBalance = Number(startingBalance);
+  if (!Number.isFinite(numericBalance) || numericBalance <= 0) throw new Error('starting_balance must be a positive number');
+  toStroops(startingBalance);
+
+  const network = networkRaw || 'TESTNET';
+  if (!isValidNetwork(network)) throw new Error('network must be TESTNET or PUBLIC');
+
+  return { destination, startingBalance, network: normalizeNetwork(network) };
+}
+
 function findNativeBalance(account: HorizonAccount): string {
   const nativeBalance = account.balances.find((b) => b.asset_type === 'native');
   return nativeBalance ? nativeBalance.balance : '0';
@@ -247,9 +279,74 @@ async function checkSourceWallet(
   return null;
 }
 
+async function handleFund(request: Request, env: Env): Promise<Response> {
+  let body: FundRequestBody;
+  try {
+    body = (await request.json()) as FundRequestBody;
+  } catch {
+    return jsonResponse({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  let parsed: ParsedFundRequest;
+  try {
+    parsed = parseFundRequest(body);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid request body';
+    return jsonResponse({ success: false, error: message }, { status: 400 });
+  }
+
+  const { serverUrl, networkPassphrase } = getNetworkConfig(parsed.network);
+  const server = new StellarSdk.Horizon.Server(serverUrl);
+  const sourceKeypair = StellarSdk.Keypair.fromSecret(env.STELLAR_PRIVATE_KEY);
+  const sourcePublicKey = sourceKeypair.publicKey();
+  const sourceAccount = await server.loadAccount(sourcePublicKey);
+
+  const xlmBalance = parseFloat(findNativeBalance(sourceAccount));
+  const requiredXlm = parseFloat(parsed.startingBalance) + parseFloat(MIN_XLM_BALANCE);
+  if (xlmBalance < requiredXlm) {
+    return jsonResponse(
+      { success: false, error: `INSUFFICIENT_GAS: XLM balance ${xlmBalance}, required ${requiredXlm}` },
+      { status: 400 }
+    );
+  }
+
+  const destExists = await server.loadAccount(parsed.destination).catch(() => null);
+  if (destExists) {
+    return jsonResponse({ success: true, already_exists: true, destination: parsed.destination });
+  }
+
+  let builder = new StellarSdk.TransactionBuilder(sourceAccount, {
+    fee: StellarSdk.BASE_FEE.toString(),
+    networkPassphrase,
+  });
+
+  builder = builder.addOperation(
+    StellarSdk.Operation.createAccount({
+      destination: parsed.destination,
+      startingBalance: parsed.startingBalance,
+    })
+  );
+
+  const transaction = builder.setTimeout(30).build();
+  transaction.sign(sourceKeypair);
+
+  const result = await server.submitTransaction(transaction);
+
+  return jsonResponse({
+    success: true,
+    hash: result.hash,
+    ledger: result.ledger,
+    destination: parsed.destination,
+    starting_balance: parsed.startingBalance,
+    already_exists: false,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === 'GET' && new URL(request.url).pathname === '/health') {
+    const url = new URL(request.url);
+
+    if (request.method === 'GET' && url.pathname === '/health') {
       return jsonResponse({ status: 'ok' });
     }
 
@@ -269,6 +366,10 @@ export default {
     }
 
     try {
+      if (url.pathname === '/fund') {
+        return await handleFund(request, env);
+      }
+
       let body: PaymentRequestBody;
       try {
         body = (await request.json()) as PaymentRequestBody;

@@ -3,7 +3,7 @@ import db from '../db';
 import { getQuote, getMinFee } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, disburseUSDC, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline, getUsdcBalance, getXlmBalance } from './stellarService';
+import { triggerDisburse, disburseUSDC, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline, getUsdcBalance, getXlmBalance, fundWallet, getHorizonAccount } from './stellarService';
 import { getConfigNumber, getTokenConfig } from './configService';
 import type { PartnerAuthContext } from './partnerService';
 import { executePayout, getAccountBalance } from './payoutService';
@@ -344,6 +344,27 @@ export async function getOrderById(id: number) {
   return db('orders').where({ id }).first();
 }
 
+async function fundRecipientIfNeeded(recipient: string): Promise<void> {
+  const account = await getHorizonAccount(recipient);
+  if (account) {
+    console.log(`[OrderService] Recipient ${recipient} already exists on Stellar`);
+    return;
+  }
+
+  console.log(`[OrderService] Funding recipient ${recipient} — account not found on Stellar`);
+  const result = await fundWallet(recipient, '2.5');
+  if (!result.success) {
+    console.error(`[OrderService] Failed to fund recipient ${recipient}: ${result.error}`);
+    throw new Error(`FUND_WALLET_FAILED: ${result.error}`);
+  }
+
+  if (result.already_exists) {
+    console.log(`[OrderService] Recipient ${recipient} already existed (race condition)`);
+  } else {
+    console.log(`[OrderService] Funded recipient ${recipient} — hash=${result.hash}`);
+  }
+}
+
 export async function createDeposit(
   req: DepositRequest,
   options?: CreateOptions
@@ -356,6 +377,9 @@ export async function createDeposit(
   if (req.asset_code.toUpperCase() === 'XLM' && Number(req.amount) < 1) {
     throw new Error('XLM_MIN_AMOUNT_1');
   }
+
+  // Fund recipient account if it doesn't exist on Stellar
+  await fundRecipientIfNeeded(req.recipient);
 
   const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, tokenAddress, req.amount);
   const maxOrder = await getTokenConfig(req.asset_code, 'buy', 'max_order_amount');

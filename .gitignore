@@ -23,7 +23,8 @@ skills-lock.json
 .opencode
 graphify*
 openspec
- 
+.codex/
+
 # Exceptions: allow CI/CD and deployment docs/scripts
 !docs/CICD_SETUP.md
 !scripts/setup-cicd-vars.sh
