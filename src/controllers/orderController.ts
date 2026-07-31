@@ -8,6 +8,7 @@ import {
   getOrderByCode,
   cancelOrder,
   formatOrderResponse,
+  listOrders,
 } from '../services/orderService';
 import type { DepositRequest, WithdrawalRequest, DepositV2Request, WithdrawalV2Request } from '../models/types';
 import { createErrorReply } from '../middlewares/errorHandler';
@@ -99,6 +100,32 @@ export async function handleWithdrawal(
     }
     throw error;
   }
+}
+
+export async function handleListOrders(
+  req: FastifyRequest<{ Querystring: { limit?: string; offset?: string; direction?: string } }>,
+  reply: FastifyReply,
+): Promise<void> {
+  const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 100);
+  const offset = Math.max(parseInt(req.query.offset || '0', 10) || 0, 0);
+  const direction = (['buy', 'sell'] as const).includes(req.query.direction as any)
+    ? (req.query.direction as 'buy' | 'sell')
+    : undefined;
+  const orders = await listOrders({ partnerId: req.partner?.id, limit, offset, direction });
+  const data = orders.map((o) => ({
+    payment_code: o.payment_code,
+    transaction_hash: o.transaction_hash,
+    order_state: o.order_state,
+    direction: o.direction,
+    usdt_amount: typeof o.usdt_amount === 'string' ? parseFloat(o.usdt_amount) : o.usdt_amount,
+    asset_code: o.asset_code,
+    net_vnd: typeof o.net_vnd === 'string' ? Number(o.net_vnd) : o.net_vnd,
+    fee_vnd: typeof o.fee_vnd === 'string' ? Number(o.fee_vnd) : o.fee_vnd,
+    rate: typeof o.rate === 'string' ? Number(o.rate) : o.rate,
+    created_at: o.created_at,
+    updated_at: o.updated_at,
+  }));
+  return reply.send({ success: true, data });
 }
 
 export async function handleGetOrder(

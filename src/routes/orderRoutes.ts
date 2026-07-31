@@ -4,7 +4,7 @@ import {
   type WithdrawalRequest,
 } from '../services/orderService';
 import type { DepositV2Request, WithdrawalV2Request } from '../models/types';
-import { handleDeposit, handleWithdrawal, handleDepositV2, handleWithdrawalV2, handleGetOrder, handleCancel, handleOrderSuccess, handleOrderError, handleOrderCancel } from '../controllers/orderController';
+import { handleDeposit, handleWithdrawal, handleDepositV2, handleWithdrawalV2, handleListOrders, handleGetOrder, handleCancel, handleOrderSuccess, handleOrderError, handleOrderCancel } from '../controllers/orderController';
 import { partnerAuth } from '../middlewares/partnerAuth';
 
 export async function orderRoutes(app: FastifyInstance): Promise<void> {
@@ -213,6 +213,50 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       },
     },
   }, handleWithdrawalV2);
+
+  app.get<{ Querystring: { limit?: string; offset?: string; direction?: string } }>('/', {
+    schema: {
+      tags: ['Orders'],
+      summary: 'List orders',
+      description: 'Returns paginated orders, sorted by updated_at descending. No authentication required.',
+      querystring: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          limit: { type: 'string', description: 'Max results (default 20, max 100)' },
+          offset: { type: 'string', description: 'Offset for pagination (default 0)' },
+          direction: { type: 'string', enum: ['buy', 'sell'], description: 'Filter by direction: buy (deposit) or sell (withdrawal)' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  payment_code: { type: 'string' },
+                  transaction_hash: { type: ['string', 'null'] },
+                  order_state: { type: 'number' },
+                  direction: { type: 'string' },
+                  usdt_amount: { type: 'number' },
+                  asset_code: { type: 'string' },
+                  net_vnd: { type: 'number' },
+                  fee_vnd: { type: 'number' },
+                  rate: { type: 'number' },
+                  created_at: { type: 'string' },
+                  updated_at: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, handleListOrders);
 
   app.get<{ Params: { id: string } }>('/:id', {
     preHandler: partnerAuth,

@@ -344,26 +344,45 @@ export async function getOrderById(id: number) {
   return db('orders').where({ id }).first();
 }
 
-async function fundRecipientIfNeeded(recipient: string): Promise<void> {
-  const account = await getHorizonAccount(recipient);
-  if (account) {
-    console.log(`[OrderService] Recipient ${recipient} already exists on Stellar`);
-    return;
-  }
-
-  console.log(`[OrderService] Funding recipient ${recipient} — account not found on Stellar`);
-  const result = await fundWallet(recipient, '2.5');
-  if (!result.success) {
-    console.error(`[OrderService] Failed to fund recipient ${recipient}: ${result.error}`);
-    throw new Error(`FUND_WALLET_FAILED: ${result.error}`);
-  }
-
-  if (result.already_exists) {
-    console.log(`[OrderService] Recipient ${recipient} already existed (race condition)`);
-  } else {
-    console.log(`[OrderService] Funded recipient ${recipient} — hash=${result.hash}`);
-  }
+export interface ListOrdersParams {
+  partnerId?: string;
+  limit: number;
+  offset: number;
+  direction?: 'buy' | 'sell';
 }
+
+export async function listOrders(params: ListOrdersParams): Promise<OrderRow[]> {
+  let query = db('orders').select('*').orderBy('updated_at', 'desc');
+  if (params.partnerId) {
+    query = query.where({ partner_id: params.partnerId });
+  }
+  if (params.direction) {
+    query = query.where({ direction: params.direction });
+  }
+  return await query.limit(params.limit).offset(params.offset);
+}
+
+// fund-on-deposit mechanic (disabled): auto-fund recipient account with XLM if it doesn't exist on Stellar
+// async function fundRecipientIfNeeded(recipient: string): Promise<void> {
+//   const account = await getHorizonAccount(recipient);
+//   if (account) {
+//     console.log(`[OrderService] Recipient ${recipient} already exists on Stellar`);
+//     return;
+//   }
+//
+//   console.log(`[OrderService] Funding recipient ${recipient} — account not found on Stellar`);
+//   const result = await fundWallet(recipient, '2.5');
+//   if (!result.success) {
+//     console.error(`[OrderService] Failed to fund recipient ${recipient}: ${result.error}`);
+//     throw new Error(`FUND_WALLET_FAILED: ${result.error}`);
+//   }
+//
+//   if (result.already_exists) {
+//     console.log(`[OrderService] Recipient ${recipient} already existed (race condition)`);
+//   } else {
+//     console.log(`[OrderService] Funded recipient ${recipient} — hash=${result.hash}`);
+//   }
+// }
 
 export async function createDeposit(
   req: DepositRequest,
@@ -380,7 +399,7 @@ export async function createDeposit(
   }
 
   // Fund recipient account if it doesn't exist on Stellar
-  await fundRecipientIfNeeded(req.recipient);
+  // await fundRecipientIfNeeded(req.recipient);
 
   const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, tokenAddress, req.amount);
   const maxOrder = await getTokenConfig(req.asset_code, 'buy', 'max_order_amount');
