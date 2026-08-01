@@ -26,6 +26,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           recipient: { type: 'string', description: "User's Stellar wallet (G...) to receive tokens. Must have USDC trustline for USDC deposits." },
           callback: { type: 'string', description: 'HTTPS webhook URL. Called on every order state change with HMAC signature.' },
           user_id: { type: 'string', description: 'Optional client-side user ID for tracking.' },
+          pay_gateway: { type: 'string', enum: ['bank', 'napas'], default: 'bank', description: 'Payment gateway: bank (static SePay QR, default) or napas (SePay PG NAPAS checkout with VietQR).' },
         },
       },
       response: {
@@ -134,6 +135,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
           callback: { type: 'string', description: 'HTTPS webhook URL. Called on every order state change with HMAC signature.' },
           user_id: { type: 'integer', description: 'ID of the registered user' },
           payment_method_id: { type: 'integer', description: 'ID of user CRYPTO payment method (must belong to user_id)' },
+          pay_gateway: { type: 'string', enum: ['bank', 'napas'], default: 'bank', description: 'Payment gateway: bank (static SePay QR, default) or napas (SePay PG NAPAS checkout with VietQR).' },
         },
       },
       response: {

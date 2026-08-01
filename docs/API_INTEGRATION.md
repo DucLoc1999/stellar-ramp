@@ -141,6 +141,7 @@ partner-app-key: <your-partner-key>
 | token_address | string | No* | Token issuer. Required for USDC, empty for XLM |
 | recipient | string | Yes | User's Stellar wallet address |
 | callback | string | Yes | Webhook URL for state changes |
+| pay_gateway | string | No | Payment gateway: `bank` (default, static SePay QR) or `napas` (SePay PG NAPAS checkout with live VietQR) |
 
 *For XLM native, `token_address` can be empty string `""` or omitted.
 
@@ -179,6 +180,27 @@ partner-app-key: <your-partner-key>
   }
 }
 ```
+
+**NAPAS gateway (`pay_gateway: "napas"`):**
+```json
+{
+  "amount": "100",
+  "chain_id": 1,
+  "asset_code": "USDC",
+  "token_address": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "recipient": "GABC123...YZ",
+  "callback": "https://your-server.com/webhook",
+  "pay_gateway": "napas"
+}
+```
+
+With `pay_gateway: "napas"` the service creates a SePay Payment Gateway NAPAS checkout order and returns a live VietQR. The response shape is identical — `body.bankInfo` and `pay_data.qr_link` / `qr_code` are populated from the NAPAS checkout (VietQR URL, NAPAS virtual account, transfer content, amount).
+
+**NAPAS payment confirmation:** NAPAS orders are confirmed via the SePay PG IPN webhook (`POST /api/webhooks/sepay-ipn`), which matches `order_invoice_number` against the order's `payment_code`. The standard SePay bank-transfer webhook (`POST /api/webhooks/sepay`) remains a valid confirmation path for both gateways.
+
+**NAPAS cancellation:** cancelling a NAPAS order first calls SePay pgapi `POST /v1/order/cancel` with the order's invoice, then applies the local cancellation. Pgapi errors are logged but never block the local cancel.
+
+**NAPAS configuration:** requires `SEPAY_MERCHANT_ID` and `SEPAY_SECRET_KEY` env vars. The checkout redirect URLs (`success_url` / `error_url` / `cancel_url`) are derived from the `DOMAIN` env and point at the service's `/api/orders/{code}/success|error|cancel` endpoints.
 
 ---
 
@@ -309,6 +331,7 @@ partner-app-key: <your-partner-key>
 | callback | string | Yes | Webhook URL for state changes |
 | user_id | integer | Yes | ID of the registered user |
 | payment_method_id | integer | Yes | ID of user's CRYPTO payment method |
+| pay_gateway | string | No | Payment gateway: `bank` (default) or `napas` — forwarded to the deposit flow |
 
 *The `recipient` is automatically read from the payment method's `wallet_address` field.*
 

@@ -29,6 +29,8 @@ export const ProcessingState = {
   BUY_DISBURSE_FAILED: 15,
 } as const;
 
+export type PayGateway = 'bank' | 'napas';
+
 export interface DepositRequest {
   amount: string;
   chain_id: number;
@@ -37,6 +39,7 @@ export interface DepositRequest {
   recipient: string;
   callback: string;
   user_id?: string;
+  pay_gateway?: PayGateway;
 }
 
 export interface WithdrawalRequest {
@@ -62,6 +65,7 @@ export interface DepositV2Request {
   callback: string;
   user_id: number;
   payment_method_id: number;
+  pay_gateway?: PayGateway;
 }
 
 export interface WithdrawalV2Request {

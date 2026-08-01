@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import db from '../db';
 import { getQuote, getMinFee } from './priceService';
 import { createSepayOrder } from './sepayPgService';
+import { createNapasCheckout, cancelOrder as cancelNapasOrder } from './sepayNapasService';
 import { fireCallback } from './callbackService';
 import { triggerDisburse, disburseUSDC, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline, getUsdcBalance, getXlmBalance, fundWallet, getHorizonAccount } from './stellarService';
 import { getConfigNumber, getTokenConfig } from './configService';
@@ -9,7 +10,7 @@ import type { PartnerAuthContext } from './partnerService';
 import { executePayout, getAccountBalance } from './payoutService';
 import { emitOrderPaid } from './queueService';
 import { consumeReservation, releaseReservation, reserveForOrder, rollbackReservation } from './reservationService';
-import type { DepositRequest, WithdrawalRequest, DepositV2Request, WithdrawalV2Request } from '../models/types';
+import type { DepositRequest, WithdrawalRequest, DepositV2Request, WithdrawalV2Request, PayGateway } from '../models/types';
 import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../models/usdt247';
 import { OrderState, ProcessingState } from '../models/types';
 import * as userService from './userService';
@@ -61,6 +62,7 @@ interface OrderRow {
   bank_account_name: string | null;
   bank_account_no: string | null;
   partner_id: string | null;
+  pay_gateway?: string | null;
 }
 
 export interface CreateOptions {
@@ -262,14 +264,26 @@ export async function createBuyOrder(
   usdt_amount: number,
   asset: string = 'USDC',
   paymentCode?: string,
-  options?: { partner?: PartnerAuthContext; quote?: Awaited<ReturnType<typeof buildPartnerAdjustedQuote>> },
+  options?: {
+    partner?: PartnerAuthContext;
+    quote?: Awaited<ReturnType<typeof buildPartnerAdjustedQuote>>;
+    pay_gateway?: PayGateway;
+  },
 ) {
   const quote = options?.quote ?? await buildPartnerAdjustedQuote('buy', usdt_amount, asset, options?.partner);
   const payment_code = paymentCode || generatePaymentCode();
-  const sepayOrder = await createSepayOrder({
-    payment_code,
-    net_vnd: quote.net_vnd,
-  });
+  const payGateway = options?.pay_gateway ?? 'bank';
+
+  const sepayOrder = payGateway === 'napas'
+    ? await createNapasCheckout({
+        amount: quote.net_vnd,
+        description: `Thanh toan don hang ${payment_code}`,
+        invoice: payment_code,
+      })
+    : await createSepayOrder({
+        payment_code,
+        net_vnd: quote.net_vnd,
+      });
 
   const inserted = await db('orders').insert({
     payment_code,
@@ -285,6 +299,7 @@ export async function createBuyOrder(
     amount: sepayOrder.amount,
     order_state: OrderState.CREATED,
     partner_id: options?.partner?.id ?? null,
+    pay_gateway: payGateway,
   });
   const id = firstInsertedId(inserted);
 
@@ -435,7 +450,7 @@ export async function createDeposit(
 
   let result: Awaited<ReturnType<typeof createBuyOrder>>;
   try {
-    result = await createBuyOrder(usdtAmount, req.asset_code, paymentCode, { partner: options?.partner, quote });
+    result = await createBuyOrder(usdtAmount, req.asset_code, paymentCode, { partner: options?.partner, quote, pay_gateway: req.pay_gateway ?? 'bank' });
   } catch (error) {
     await rollbackReservation(paymentCode);
     throw error;
@@ -635,6 +650,15 @@ async function performCancel(order: OrderRow, reason?: string): Promise<CancelRe
   // Block cancellation if payment webhook already received
   if (order.last_webhook_id) {
     return { error: 'CANCEL_NOT_ALLOWED' };
+  }
+
+  // Cancel the SePay PG checkout first for NAPAS orders; never block on it
+  if (order.pay_gateway === 'napas') {
+    try {
+      await cancelNapasOrder(order.payment_code);
+    } catch (err) {
+      console.error(`[OrderService] SePay pgapi cancel failed for ${order.payment_code}:`, err);
+    }
   }
 
   const updated = await transitionOrder(order.id, {
@@ -1019,6 +1043,7 @@ export async function createDepositV2(
     recipient: paymentMethod.wallet_address,
     callback: req.callback,
     user_id: String(req.user_id),
+    pay_gateway: req.pay_gateway,
   };
 
   return createDeposit(depositReq, options);
