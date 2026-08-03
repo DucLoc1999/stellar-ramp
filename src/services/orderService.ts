@@ -235,6 +235,7 @@ async function transitionOrder(
     processing_state?: number;
     transaction_hash?: string | null;
     last_webhook_id?: string;
+    recipient?: string | null;
     error_message?: string;
     vnd_received?: number;
     payment_confirmed_at?: unknown;
@@ -815,6 +816,7 @@ export async function processSellPayment(params: {
     processing_state: ProcessingState.SELL_PAYMENT_RECEIVED,
     transaction_hash: txHash,
     last_webhook_id: String(webhookLogId),
+    ...(from ? { recipient: from } : {}),
   });
 
   if (order.callback) {
