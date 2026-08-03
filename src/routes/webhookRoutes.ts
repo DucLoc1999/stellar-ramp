@@ -73,7 +73,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       summary: 'SePay Payment Gateway IPN — receives card/e-wallet payment notifications',
       body: {
         type: 'object',
-        required: ['timestamp', 'notification_type', 'order', 'transaction', 'customer'],
+        required: ['timestamp', 'notification_type', 'order', 'transaction'],
         properties: {
           timestamp: { type: 'integer' },
           notification_type: { type: 'string', enum: ['ORDER_PAID', 'TRANSACTION_VOID'] },
@@ -108,11 +108,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
             },
           },
           customer: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              customer_id: { type: 'string' },
-            },
+            anyOf: [
+              { type: 'object', properties: { id: { type: 'string' }, customer_id: { type: 'string' } } },
+              { type: 'null' },
+            ],
           },
         },
       },
