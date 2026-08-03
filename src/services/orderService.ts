@@ -63,11 +63,13 @@ interface OrderRow {
   bank_account_no: string | null;
   partner_id: string | null;
   pay_gateway?: string | null;
+  user_id?: number | null;
 }
 
 export interface CreateOptions {
   clientIp?: string;
   partner?: PartnerAuthContext;
+  userId?: number;
 }
 
 export interface CreateDepositParams extends DepositRequest {
@@ -362,6 +364,7 @@ export async function getOrderById(id: number) {
 
 export interface ListOrdersParams {
   partnerId?: string;
+  userId?: number;
   limit: number;
   offset: number;
   direction?: 'buy' | 'sell';
@@ -371,6 +374,9 @@ export async function listOrders(params: ListOrdersParams): Promise<OrderRow[]> 
   let query = db('orders').select('*').orderBy('updated_at', 'desc');
   if (params.partnerId) {
     query = query.where({ partner_id: params.partnerId });
+  }
+  if (params.userId !== undefined) {
+    query = query.where({ user_id: params.userId });
   }
   if (params.direction) {
     query = query.where({ direction: params.direction });
@@ -473,6 +479,7 @@ export async function createDeposit(
         va_number: result.sepayOrder.va_number,
         transfer_content: result.sepayOrder.transfer_content,
         amount: result.sepayOrder.amount,
+        ...(options?.userId !== undefined ? { user_id: options.userId } : {}),
       })
       .returning('*');
   } catch (error) {
@@ -563,6 +570,7 @@ export async function createWithdrawal(
         payment_info: JSON.stringify(req.payment_info),
         expired_at: expiredAt,
         partner_id: options?.partner?.id ?? null,
+        ...(options?.userId !== undefined ? { user_id: options.userId } : {}),
       });
   } catch (error) {
     await rollbackReservation(payment_code);
@@ -1048,7 +1056,7 @@ export async function createDepositV2(
     pay_gateway: req.pay_gateway,
   };
 
-  return createDeposit(depositReq, options);
+  return createDeposit(depositReq, { ...options, userId: req.user_id });
 }
 
 export async function createWithdrawalV2(
@@ -1086,5 +1094,5 @@ export async function createWithdrawalV2(
     },
   };
 
-  return createWithdrawal(withdrawalReq, options);
+  return createWithdrawal(withdrawalReq, { ...options, userId: req.user_id });
 }

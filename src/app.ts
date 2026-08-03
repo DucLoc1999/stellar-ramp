@@ -13,6 +13,8 @@ import { bypassRoutes } from './routes/bypassRoutes';
 import { cmsRoutes } from './routes/cmsRoutes';
 import { landingRoutes } from './routes/landingRoutes';
 import { userRoutes } from './routes/userRoutes';
+import { authRoutes } from './routes/authRoutes';
+import { meRoutes } from './routes/meRoutes';
 import { errorHandler } from './middlewares/errorHandler';
 import db from './db';
 import { runMigrations } from './utils/migrationRunner';
@@ -24,8 +26,12 @@ import { ensureBootstrapPartner } from './services/partnerService';
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
 
+  const allowedOrigins = process.env.FRONTEND_ORIGIN
+    ? [process.env.FRONTEND_ORIGIN]
+    : ([] as string[]);
+
   await app.register(cors, {
-    origin: true,
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'partner-app-key'],
     credentials: true,
@@ -68,6 +74,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(configRoutes, { prefix: '/config' });
   await app.register(orderRoutes, { prefix: '/api/orders' });
   await app.register(userRoutes, { prefix: '/api/users' });
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(meRoutes, { prefix: '/api/me' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
 
   app.addHook('onReady', async () => {
