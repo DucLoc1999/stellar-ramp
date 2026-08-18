@@ -5,10 +5,15 @@ export interface GoogleTokenPayload {
   picture?: string;
 }
 
-export async function verifyGoogleIdToken(idToken: string): Promise<GoogleTokenPayload> {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+export async function verifyGoogleIdToken(idToken: string, client?: string): Promise<GoogleTokenPayload> {
+  const clientId =
+    client === 'web'
+      ? process.env.GOOGLE_WEB_CLIENT_ID
+      : process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
-    throw new Error('GOOGLE_CLIENT_ID not configured');
+    throw new Error(
+      client === 'web' ? 'GOOGLE_WEB_CLIENT_ID not configured' : 'GOOGLE_CLIENT_ID not configured',
+    );
   }
 
   const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;

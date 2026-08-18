@@ -39,3 +39,6 @@ data/
 
 # Tests (not tracked)
 test/
+
+# scratch
+p2p_prices.db

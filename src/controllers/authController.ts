@@ -7,10 +7,10 @@ import { signJwt } from '../utils/jwt';
 const USER_JWT_EXPIRES_SEC = Number(process.env.USER_JWT_EXPIRES_SEC) || 86400;
 
 export async function handleGoogleLogin(
-  req: FastifyRequest<{ Body: { id_token: string } }>,
+  req: FastifyRequest<{ Body: { id_token: string; client?: string } }>,
   reply: FastifyReply,
 ): Promise<void> {
-  const { id_token } = req.body;
+  const { id_token, client } = req.body;
   if (!id_token) {
     return createErrorReply(reply, 'VALIDATION_ERROR', 'id_token is required', req.id);
   }
@@ -22,7 +22,7 @@ export async function handleGoogleLogin(
 
   let googleUser: { sub: string; email: string; name: string; picture?: string };
   try {
-    googleUser = await verifyGoogleIdToken(id_token);
+    googleUser = await verifyGoogleIdToken(id_token, client);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid Google token';
     return createErrorReply(reply, 'UNAUTHORIZED', message, req.id);
