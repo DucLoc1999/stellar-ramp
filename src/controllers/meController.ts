@@ -170,6 +170,7 @@ export async function handleMeDeposit(
       RECIPIENT_NO_TRUSTLINE: 'Recipient wallet does not have a trustline for USDC',
       RECIPIENT_TRUSTLINE_NOT_AUTHORIZED: 'Recipient trustline is not authorized for receiving USDC',
       RECIPIENT_INSUFFICIENT_LIMIT: 'Recipient trustline limit is insufficient for this deposit amount',
+      RECIPIENT_ACCOUNT_NOT_INITIALIZED: 'Recipient Stellar account is not initialized and the deposit amount is below the minimum (1 XLM) required to create it',
       UNSUPPORTED_TOKEN: 'Token address not supported',
       MIN_ORDER_NOT_MET: 'Order amount is below the minimum allowed limit',
       MAX_ORDER_EXCEEDED: 'Order amount exceeds the maximum allowed limit',

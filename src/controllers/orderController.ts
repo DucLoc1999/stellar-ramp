@@ -54,6 +54,9 @@ export async function handleDeposit(
     if (errMsg === 'RECIPIENT_INSUFFICIENT_LIMIT') {
       return createErrorReply(reply, 'RECIPIENT_INSUFFICIENT_LIMIT', 'Recipient trustline limit is insufficient for this deposit amount', req.id);
     }
+    if (errMsg === 'RECIPIENT_ACCOUNT_NOT_INITIALIZED') {
+      return createErrorReply(reply, 'RECIPIENT_ACCOUNT_NOT_INITIALIZED', 'Recipient Stellar account is not initialized and the deposit amount is below the minimum (1 XLM) required to create it', req.id);
+    }
     if (errMsg === 'UNSUPPORTED_TOKEN') {
       return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);
     }
@@ -224,6 +227,9 @@ export async function handleDepositV2(
     }
     if (errMsg === 'RECIPIENT_INSUFFICIENT_LIMIT') {
       return createErrorReply(reply, 'RECIPIENT_INSUFFICIENT_LIMIT', 'Recipient trustline limit is insufficient for this deposit amount', req.id);
+    }
+    if (errMsg === 'RECIPIENT_ACCOUNT_NOT_INITIALIZED') {
+      return createErrorReply(reply, 'RECIPIENT_ACCOUNT_NOT_INITIALIZED', 'Recipient Stellar account is not initialized and the deposit amount is below the minimum (1 XLM) required to create it', req.id);
     }
     if (errMsg === 'UNSUPPORTED_TOKEN') {
       return createErrorReply(reply, 'UNSUPPORTED_TOKEN', 'Token address not supported', req.id);

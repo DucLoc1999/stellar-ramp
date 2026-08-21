@@ -4,7 +4,7 @@ import { getQuote, getMinFee } from './priceService';
 import { createSepayOrder } from './sepayPgService';
 import { createNapasCheckout, cancelOrder as cancelNapasOrder } from './sepayNapasService';
 import { fireCallback } from './callbackService';
-import { triggerDisburse, disburseUSDC, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline, getUsdcBalance, getXlmBalance, fundWallet, getHorizonAccount } from './stellarService';
+import { triggerDisburse, disburseUSDC, hasTrustline, SUPPORTED_TOKEN_ISSUER, DEFAULT_ASSET_CODE, checkTrustline, getUsdcBalance, getXlmBalance, getHorizonAccount } from './stellarService';
 import { getConfigNumber, getTokenConfig } from './configService';
 import type { PartnerAuthContext } from './partnerService';
 import { executePayout, getAccountBalance } from './payoutService';
@@ -20,6 +20,9 @@ export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
 /** Order expiry duration in milliseconds. Defaults to 5 minutes. */
 export const ORDER_EXPIRY_MS = (Number(process.env.ORDER_EXPIRY_MINUTES) || 5) * 60 * 1000;
+
+/** Stellar minimum account balance in XLM (base reserve × 2). Used to gate XLM deposits to non-existent accounts. */
+export const MIN_XLM_ACCOUNT_BALANCE = Number(process.env.MIN_XLM_ACCOUNT_BALANCE) || 1;
 
 function isSupportedToken(tokenAddress: string | null | undefined, assetCode: string): boolean {
   const addr = tokenAddress || '';
@@ -384,27 +387,13 @@ export async function listOrders(params: ListOrdersParams): Promise<OrderRow[]> 
   return await query.limit(params.limit).offset(params.offset);
 }
 
-// fund-on-deposit mechanic (disabled): auto-fund recipient account with XLM if it doesn't exist on Stellar
-// async function fundRecipientIfNeeded(recipient: string): Promise<void> {
-//   const account = await getHorizonAccount(recipient);
-//   if (account) {
-//     console.log(`[OrderService] Recipient ${recipient} already exists on Stellar`);
-//     return;
-//   }
-//
-//   console.log(`[OrderService] Funding recipient ${recipient} — account not found on Stellar`);
-//   const result = await fundWallet(recipient, '2.5');
-//   if (!result.success) {
-//     console.error(`[OrderService] Failed to fund recipient ${recipient}: ${result.error}`);
-//     throw new Error(`FUND_WALLET_FAILED: ${result.error}`);
-//   }
-//
-//   if (result.already_exists) {
-//     console.log(`[OrderService] Recipient ${recipient} already existed (race condition)`);
-//   } else {
-//     console.log(`[OrderService] Funded recipient ${recipient} — hash=${result.hash}`);
-//   }
-// }
+// fund-on-deposit: for native XLM deposits to a non-existent recipient account, require the
+// deposit amount to cover the Stellar minimum account balance. Account creation happens during
+// disbursement (worker createAccount) with the deposit amount as starting balance — no separate
+// funding transaction is sent.
+function isNativeXlm(assetCode: string, tokenAddress: string): boolean {
+  return !tokenAddress || assetCode.toUpperCase() === 'XLM';
+}
 
 export async function createDeposit(
   req: DepositRequest,
@@ -420,8 +409,14 @@ export async function createDeposit(
     throw new Error('MIN_ORDER_NOT_MET');
   }
 
-  // Fund recipient account if it doesn't exist on Stellar
-  // await fundRecipientIfNeeded(req.recipient);
+  // XLM guard: if the recipient account doesn't exist on Stellar, the deposit amount must be at
+  // least the minimum account balance so the worker can create the account at disburse time.
+  if (isNativeXlm(req.asset_code, tokenAddress)) {
+    const recipientAccount = await getHorizonAccount(req.recipient);
+    if (!recipientAccount && Number(req.amount) < MIN_XLM_ACCOUNT_BALANCE) {
+      throw new Error('RECIPIENT_ACCOUNT_NOT_INITIALIZED');
+    }
+  }
 
   const trustlineCheck = await checkTrustline(req.recipient, req.asset_code, tokenAddress, req.amount);
   const maxOrder = await getTokenConfig(req.asset_code, 'buy', 'max_order_amount');
@@ -430,11 +425,11 @@ export async function createDeposit(
   }
   if (!trustlineCheck.exists) {
     console.error(`[OrderService] Trustline check failed for ${req.recipient}: trustline does not exist for ${req.asset_code} (issuer: ${tokenAddress})`);
-    throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
+    throw new Error('RECIPIENT_NO_TRUSTLINE');
   }
   if (!trustlineCheck.hasLimit) {
     console.error(`[OrderService] Trustline check failed for ${req.recipient}: insufficient limit. Available: ${trustlineCheck.availableLimit}, Requested: ${req.amount}`);
-    throw new Error('RECIPIENT_TRUSTLINE_INSUFFICIENT_LIMIT');
+    throw new Error('RECIPIENT_INSUFFICIENT_LIMIT');
   }
 
   const expiredAt = new Date(Date.now() + ORDER_EXPIRY_MS);
