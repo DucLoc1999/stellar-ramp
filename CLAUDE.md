@@ -180,6 +180,7 @@ All errors return standardized format with `X-Trace-ID` header:
 - `encryptionService.ts` — AES-256-GCM encrypt/decrypt for wallet secrets
 - `callbackService.ts` — webhook callback with retry (3×), logging, HMAC signature, dual-secret rotation
 - `sepayService.ts` — webhook handler, deduplication
+- `geminiVisionService.ts` — KYC ID card recognition via Google Gemini vision API (supersedes legacy `fptAiVisionService.ts`, which is deprecated and unused)
 
 ## Key Tables
 
@@ -231,6 +232,8 @@ All via `import 'dotenv/config'`. See `.env.example`:
 | `STELLAR_HOT_WALLET_NAME` | Default: stellar_hot_wallet |
 | `STELLAR_HOT_WALLET_ENCRYPTION_KEY` | 32+ char key for AES-256-GCM |
 | `ADMIN_JWT_SECRET` | JWT signing secret for admin routes |
+| `GOOGLE_AI_API_KEY` | Google AI API key — required for KYC ID card recognition (Gemini) |
+| `GEMINI_MODEL` | Gemini vision model for ID recognition (default: gemini-3.6-flash) |
 
 ## Payment Code
 

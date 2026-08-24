@@ -3,7 +3,7 @@ import { createErrorReply } from '../middlewares/errorHandler';
 import * as userService from '../services/userService';
 import * as paymentMethodService from '../services/paymentMethodService';
 import * as s3Service from '../services/s3Service';
-import * as fptAiVisionService from '../services/fptAiVisionService';
+import * as geminiVisionService from '../services/geminiVisionService';
 import { createDepositV2, createWithdrawalV2, formatOrderResponse, listOrders, getOrderById, getOrderByCode } from '../services/orderService';
 import type { DepositV2Request, WithdrawalV2Request } from '../models/types';
 
@@ -53,39 +53,49 @@ export async function handleMeKyc(req: FastifyRequest, reply: FastifyReply): Pro
     s3Service.uploadFile(imageBackBuffer, backKey, 'image/jpeg'),
   ]);
 
-  const [frontData, backData] = await Promise.all([
-    fptAiVisionService.recognizeIdCard(imageFrontBuffer, 'front.jpg'),
-    fptAiVisionService.recognizeIdCard(imageBackBuffer, 'back.jpg'),
-  ]);
+  try {
+    const [frontData, backData] = await Promise.all([
+      geminiVisionService.recognizeIdCard(imageFrontBuffer, 'front'),
+      geminiVisionService.recognizeIdCard(imageBackBuffer, 'back'),
+    ]);
 
-  const idNumber = frontData.id;
-  if (!idNumber) {
-    return createErrorReply(reply, 'VALIDATION_ERROR', 'Could not extract ID number from front image', req.id);
+    const idNumber = frontData.id_number;
+    if (!idNumber) {
+      return createErrorReply(reply, 'VALIDATION_ERROR', 'Could not extract ID number from front image', req.id);
+    }
+
+    const dob = geminiVisionService.parseIsoDate(frontData.date_of_birth);
+    if (!dob) {
+      return createErrorReply(reply, 'VALIDATION_ERROR', 'Could not parse date of birth from ID card', req.id);
+    }
+
+    const doe = geminiVisionService.parseIsoDate(backData.expiry_date || backData.issue_date);
+
+    const updatedUser = await userService.updateKycData(userId, {
+      id_number: idNumber,
+      name: frontData.full_name || undefined,
+      dob,
+      sex: frontData.sex || null,
+      nationality: frontData.nationality || null,
+      home: frontData.home || null,
+      address: frontData.address || null,
+      doe: doe || null,
+      kyc_image_front: frontUrl,
+      kyc_image_back: backUrl,
+      kyc_status: 'approved',
+      kyc_verified_at: new Date(),
+    });
+
+    return reply.send({ success: true, data: formatUserResponse(updatedUser as unknown as Record<string, unknown>) });
+  } catch (err) {
+    if (err instanceof geminiVisionService.NotIdCardError) {
+      return createErrorReply(reply, 'VALIDATION_ERROR', err.message, req.id);
+    }
+    if (err instanceof geminiVisionService.GeminiConfigError) {
+      return createErrorReply(reply, 'AUTH_NOT_CONFIGURED', err.message, req.id);
+    }
+    throw err;
   }
-
-  const dob = fptAiVisionService.parseDate(frontData.dob);
-  if (!dob) {
-    return createErrorReply(reply, 'VALIDATION_ERROR', 'Could not parse date of birth from ID card', req.id);
-  }
-
-  const doe = fptAiVisionService.parseDate(backData.issue_date || backData.doe || frontData.doe);
-
-  const updatedUser = await userService.updateKycData(userId, {
-    id_number: idNumber,
-    name: frontData.name || undefined,
-    dob,
-    sex: frontData.sex || null,
-    nationality: frontData.nationality || null,
-    home: frontData.home || null,
-    address: frontData.address || null,
-    doe: doe || null,
-    kyc_image_front: frontUrl,
-    kyc_image_back: backUrl,
-    kyc_status: 'approved',
-    kyc_verified_at: new Date(),
-  });
-
-  return reply.send({ success: true, data: formatUserResponse(updatedUser as unknown as Record<string, unknown>) });
 }
 
 export async function handleListMePaymentMethods(req: FastifyRequest, reply: FastifyReply): Promise<void> {

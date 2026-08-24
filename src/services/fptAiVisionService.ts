@@ -1,3 +1,7 @@
+/**
+ * @deprecated LEGACY SOLUTION — superseded by `geminiVisionService`.
+ * Kept for reference/rollback only. Do NOT call from active code paths.
+ */
 import axios from 'axios';
 import FormData from 'form-data';
 

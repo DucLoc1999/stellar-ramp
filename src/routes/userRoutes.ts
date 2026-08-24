@@ -17,7 +17,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       security: [{ PartnerAppKey: [] }],
       tags: ['Users'],
       summary: 'KYC with CCCD (ID card)',
-      description: 'Submit front and back images of Vietnamese ID card (CCCD) as multipart/form-data. Extracts identity data via FPT AI Vision and creates a user record.',
+      description: 'Submit front and back images of Vietnamese ID card (CCCD) as multipart/form-data. Extracts identity data and creates a user record.',
       consumes: ['multipart/form-data'],
       response: {
         201: {

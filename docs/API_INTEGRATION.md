@@ -1519,7 +1519,7 @@ partner-app-key: <your-partner-key>
 **Flow:**
 1. Images received as multipart files
 2. Files uploaded to S3 for persistent storage (audit)
-3. Raw image buffers sent directly to FPT AI Vision API for OCR (no URL needed — FPT receives file bytes directly)
+3. Raw image buffers processed by the service's internal ID recognition engine (no URL needed — file bytes are sent directly)
 4. If a user with the same ID number already exists, returns the existing user
 5. Otherwise creates a new user record and returns it
 
