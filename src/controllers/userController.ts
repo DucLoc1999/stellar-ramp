@@ -3,7 +3,7 @@ import { createErrorReply } from '../middlewares/errorHandler';
 import * as userService from '../services/userService';
 import * as paymentMethodService from '../services/paymentMethodService';
 import * as s3Service from '../services/s3Service';
-import * as geminiVisionService from '../services/geminiVisionService';
+import * as idRecognitionService from '../services/idRecognitionService';
 
 function formatUserResponse(user: Record<string, unknown>) {
   const { kyc_image_front, kyc_image_back, ...rest } = user;
@@ -108,8 +108,8 @@ export async function handleKycIdCard(
 
   try {
     const [frontData, backData] = await Promise.all([
-      geminiVisionService.recognizeIdCard(imageFrontBuffer, 'front'),
-      geminiVisionService.recognizeIdCard(imageBackBuffer, 'back'),
+      idRecognitionService.recognizeIdCard(imageFrontBuffer, 'front'),
+      idRecognitionService.recognizeIdCard(imageBackBuffer, 'back'),
     ]);
 
     const idNumber = frontData.id_number;
@@ -122,12 +122,12 @@ export async function handleKycIdCard(
       return reply.send({ success: true, data: formatUserResponse(existing as unknown as Record<string, unknown>) });
     }
 
-    const dob = geminiVisionService.parseIsoDate(frontData.date_of_birth);
+    const dob = idRecognitionService.parseIsoDate(frontData.date_of_birth);
     if (!dob) {
       return createErrorReply(reply, 'VALIDATION_ERROR', 'Could not parse date of birth from ID card', req.id);
     }
 
-    const doe = geminiVisionService.parseIsoDate(backData.expiry_date || backData.issue_date);
+    const doe = idRecognitionService.parseIsoDate(backData.expiry_date || backData.issue_date);
 
     const user = await userService.create({
       id_number: idNumber,
@@ -146,10 +146,10 @@ export async function handleKycIdCard(
 
     return reply.status(201).send({ success: true, data: formatUserResponse(user as unknown as Record<string, unknown>) });
   } catch (err) {
-    if (err instanceof geminiVisionService.NotIdCardError) {
+    if (err instanceof idRecognitionService.NotIdCardError) {
       return createErrorReply(reply, 'VALIDATION_ERROR', err.message, req.id);
     }
-    if (err instanceof geminiVisionService.GeminiConfigError) {
+    if (err instanceof idRecognitionService.GeminiConfigError) {
       return createErrorReply(reply, 'AUTH_NOT_CONFIGURED', err.message, req.id);
     }
     throw err;

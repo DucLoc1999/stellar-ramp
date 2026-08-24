@@ -180,7 +180,10 @@ All errors return standardized format with `X-Trace-ID` header:
 - `encryptionService.ts` — AES-256-GCM encrypt/decrypt for wallet secrets
 - `callbackService.ts` — webhook callback with retry (3×), logging, HMAC signature, dual-secret rotation
 - `sepayService.ts` — webhook handler, deduplication
-- `geminiVisionService.ts` — KYC ID card recognition via Google Gemini vision API (supersedes legacy `fptAiVisionService.ts`, which is deprecated and unused)
+- `idRecognitionService.ts` — KYC recognition facade: routes via `ID_RECOGNITION_PROVIDER` (hybrid default) with OCR.space fast path and Gemini fallback
+- `ocrSpaceService.ts` — OCR.space API client (fast path): multipart POST, `language=vnm`, retry + timeout
+- `cccdParser.ts` — CCCD text parser: diacritic-tolerant fuzzy labels, date/sex normalization, TD1 MRZ cross-validation
+- `geminiVisionService.ts` — Gemini vision fallback for KYC ID recognition (supersedes legacy `fptAiVisionService.ts`, which is deprecated and unused)
 
 ## Key Tables
 
@@ -232,8 +235,13 @@ All via `import 'dotenv/config'`. See `.env.example`:
 | `STELLAR_HOT_WALLET_NAME` | Default: stellar_hot_wallet |
 | `STELLAR_HOT_WALLET_ENCRYPTION_KEY` | 32+ char key for AES-256-GCM |
 | `ADMIN_JWT_SECRET` | JWT signing secret for admin routes |
-| `GOOGLE_AI_API_KEY` | Google AI API key — required for KYC ID card recognition (Gemini) |
+| `GOOGLE_AI_API_KEY` | Google AI API key — Gemini fallback for KYC ID recognition |
 | `GEMINI_MODEL` | Gemini vision model for ID recognition (default: gemini-3.6-flash) |
+| `OCR_SPACE_API_KEY` | ocr.space API key — fast-path KYC recognition (free: 500 req/day/IP) |
+| `OCR_SPACE_ENDPOINT` | ocr.space endpoint (default: https://api.ocr.space/parse/image) |
+| `OCR_SPACE_ENGINE` | ocr.space engine 1\|2\|3 (default: 2) |
+| `OCR_SPACE_TIMEOUT_MS` | ocr.space request timeout (default: 12000) |
+| `ID_RECOGNITION_PROVIDER` | hybrid \| ocrspace \| gemini (default: hybrid) |
 
 ## Payment Code
 
