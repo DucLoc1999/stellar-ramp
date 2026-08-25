@@ -65,7 +65,7 @@ const LABELS: LabelRule[] = [
   },
   {
     field: 'expiry_date',
-    patterns: ['date of expiry', 'ngay het han', 'het han', 'expiry'],
+    patterns: ['date of expiry', 'ngay het han', 'het han', 'co gia tri den', 'gia tri den', 'expiry'],
   },
 ];
 
@@ -80,17 +80,80 @@ function norm(input: string): string {
   return ` ${stripDiacritics(input)
     .toLowerCase()
     .replace(/[^a-z0-9/<>.:\- ]+/g, ' ')
+    .replace(/\s*\/\s*/g, '/')
     .replace(/\s+/g, ' ')
     .trim()} `;
 }
 
-function matchLabel(normalizedLine: string): LabelRule | null {
+function loose(input: string): string {
+  return stripDiacritics(input).toLowerCase();
+}
+
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const COMPILED_LABELS: Array<{ rule: LabelRule; re: RegExp }> = (() => {
+  const compiled: Array<{ rule: LabelRule; re: RegExp }> = [];
   for (const rule of LABELS) {
     for (const pattern of rule.patterns) {
-      if (normalizedLine.includes(pattern)) return rule;
+      const body = pattern
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean)
+        .map(escapeRegExp)
+        .join('[^a-z0-9]+');
+      compiled.push({
+        rule,
+        re: new RegExp(`(^|[^a-z0-9])${body}([^a-z0-9]|$)`, 'g'),
+      });
     }
   }
-  return null;
+  return compiled;
+})();
+
+interface LabelHit {
+  rule: LabelRule;
+  start: number;
+  end: number;
+}
+
+function findNextLabel(text: string, from: number): LabelHit | null {
+  let best: LabelHit | null = null;
+  for (const { rule, re } of COMPILED_LABELS) {
+    re.lastIndex = from;
+    const m = re.exec(text);
+    if (!m) continue;
+    const start = m.index + m[1]!.length;
+    const end = m.index + m[0]!.length - m[2]!.length;
+    if (!best || start < best.start) {
+      best = { rule, start, end };
+    }
+  }
+  return best;
+}
+
+function findLabels(text: string): LabelHit[] {
+  const hits: LabelHit[] = [];
+  let current = findNextLabel(text, 0);
+  let guard = 0;
+  while (current && guard++ < 8) {
+    hits.push(current);
+    current = findNextLabel(
+      text,
+      Math.max(current.end, current.start + 1),
+    );
+  }
+  return hits;
+}
+
+const ALL_PATTERN_STRINGS = LABELS.flatMap((rule) =>
+  rule.patterns.map((p) => p.toLowerCase()),
+);
+
+function hasLabelSubstring(text: string): boolean {
+  const looseText = stripDiacritics(text).toLowerCase();
+  return ALL_PATTERN_STRINGS.some((p) => looseText.includes(p));
 }
 
 function extractDate(raw: string): string {
@@ -211,6 +274,8 @@ function parseMrz(lines: string[]): MrzData | null {
   return null;
 }
 
+const DEFAULT_NATIONALITY = 'Việt Nam';
+
 const EMPTY_DATA: RecognizedIdData = {
   id_number: '',
   full_name: '',
@@ -231,37 +296,51 @@ export function parseCccdText(text: string, side: 'front' | 'back'): ParsedCccd 
 
   const captured = new Map<FieldName, string>();
   let expiryExplicitNone = false;
-  const normalizedLines = lines.map(norm);
 
   for (let i = 0; i < lines.length; i++) {
-    const rule = matchLabel(normalizedLines[i]!);
-    if (!rule || captured.has(rule.field)) continue;
+    const raw = lines[i]!;
+    const hits = findLabels(loose(raw));
+    if (!hits.length) continue;
 
-    const original = lines[i]!;
-    const colonIdx = original.indexOf(':');
-    let value = colonIdx >= 0 ? original.slice(colonIdx + 1).trim() : '';
+    for (let s = hits.length - 1; s >= 0; s--) {
+      const hit = hits[s]!;
+      if (captured.has(hit.rule.field)) continue;
 
-    const wantsContinuation =
-      rule.field === 'home' || rule.field === 'address';
-    if (!value || matchLabel(norm(value)) || wantsContinuation) {
-      const followUp: string[] = [];
-      if (value && !matchLabel(norm(value))) followUp.push(value);
-      for (let j = i + 1; j < lines.length; j++) {
-        if (matchLabel(normalizedLines[j]!)) break;
-        if (!lines[j]) continue;
-        followUp.push(lines[j]!);
-        if (followUp.length >= 2) break;
+      const segEnd =
+        s + 1 < hits.length ? hits[s + 1]!.start : raw.length;
+      const segRaw = raw.slice(Math.min(hit.start, raw.length), segEnd);
+      const colonIdx = segRaw.indexOf(':');
+      let value = colonIdx >= 0 ? segRaw.slice(colonIdx + 1).trim() : '';
+
+      const wantsContinuation =
+        hit.rule.field === 'home' || hit.rule.field === 'address';
+      const valueIsLabel = value
+        ? findLabels(loose(value)).length > 0 || hasLabelSubstring(value)
+        : false;
+      if (!value || valueIsLabel || wantsContinuation) {
+        const followUp: string[] = [];
+        if (value && !valueIsLabel) followUp.push(value);
+        for (let j = i + 1; j < lines.length; j++) {
+          if (
+            findLabels(loose(lines[j]!)).length ||
+            hasLabelSubstring(lines[j]!)
+          ) {
+            break;
+          }
+          followUp.push(lines[j]!);
+          if (followUp.length >= 2) break;
+        }
+        value = followUp.join(', ');
       }
-      value = followUp.join(', ');
-    }
 
-    if (rule.field === 'expiry_date' && isNoExpiry(value)) {
-      expiryExplicitNone = true;
-      captured.set('expiry_date', '');
-      continue;
-    }
-    if (value.trim()) {
-      captured.set(rule.field, value.trim());
+      if (hit.rule.field === 'expiry_date' && isNoExpiry(value)) {
+        expiryExplicitNone = true;
+        captured.set('expiry_date', '');
+        continue;
+      }
+      if (value.trim()) {
+        captured.set(hit.rule.field, value.trim());
+      }
     }
   }
 
@@ -273,7 +352,8 @@ export function parseCccdText(text: string, side: 'front' | 'back'): ParsedCccd 
   data.full_name = nameValue && plausibleName(nameValue) ? cleanTextValue(nameValue) : '';
   data.date_of_birth = extractDate(captured.get('date_of_birth') ?? '');
   data.sex = extractSex(captured.get('sex') ?? '');
-  data.nationality = cleanTextValue(captured.get('nationality') ?? '');
+  data.nationality =
+    cleanTextValue(captured.get('nationality') ?? '') || DEFAULT_NATIONALITY;
   data.home = cleanTextValue(captured.get('home') ?? '');
   const addressValue = captured.get('address');
   data.address = addressValue && plausibleLongText(addressValue) ? cleanTextValue(addressValue) : '';
@@ -312,8 +392,10 @@ export function parseCccdText(text: string, side: 'front' | 'back'): ParsedCccd 
 
   const hasRequiredFields =
     side === 'front'
-      ? Boolean(data.id_number && data.full_name && data.date_of_birth)
-      : Boolean(data.issue_date || data.expiry_date || expiryExplicitNone);
+      ? Boolean(
+          data.id_number && data.full_name && data.date_of_birth && data.sex,
+        )
+      : true;
 
   return { data, side, hasRequiredFields, hasAnySignal };
 }
