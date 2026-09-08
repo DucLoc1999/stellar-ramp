@@ -1,7 +1,10 @@
+import * as StellarSdk from '@stellar/stellar-sdk';
 import db from '../db';
 import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
 import { OrderState } from '../models/types';
 import { fireCallback } from './callbackService';
+import { signTxHash, resolveSourcePublicKey } from './gcpKmsService';
+import { loadGcpKmsConfig } from '../config/gcpKms';
 
 export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || '';
 export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
@@ -140,6 +143,258 @@ export async function initStellarServer(network?: string) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// GCP KMS signing path (replaces the Cloudflare signer worker)
+// ---------------------------------------------------------------------------
+
+export const MIN_XLM_BALANCE = '0.00001';
+export const DEFAULT_STARTING_BALANCE = '2.5';
+
+const STROOP_SCALE = 10n ** 7n;
+
+export function toStroops(amount: string): bigint {
+  const match = /^(\d+)(?:\.(\d{1,7}))?$/.exec(amount);
+  if (!match) {
+    throw new Error('amount must have no more than 7 decimal places');
+  }
+  const whole = BigInt(match[1]);
+  const fraction = (match[2] ?? '').padEnd(7, '0');
+  return whole * STROOP_SCALE + BigInt(fraction || '0');
+}
+
+export interface KmsNativeAsset {
+  isNative: true;
+  asset: StellarSdk.Asset;
+  assetCode: 'XLM';
+  assetIssuer?: undefined;
+}
+
+export interface KmsTokenAsset {
+  isNative: false;
+  asset: StellarSdk.Asset;
+  assetCode: string;
+  assetIssuer: string;
+}
+
+export type KmsAssetSpec = KmsNativeAsset | KmsTokenAsset;
+
+export interface HorizonLikeAccount {
+  balances: any[];
+}
+
+export function findNativeBalance(account: HorizonLikeAccount): string {
+  const nativeBalance = account.balances.find((b) => b.asset_type === 'native');
+  return nativeBalance ? String(nativeBalance.balance ?? '0') : '0';
+}
+
+export function findTokenBalance(account: HorizonLikeAccount, assetCode: string, assetIssuer: string): { balance: string; isAuthorized: boolean } | null {
+  const trustline = account.balances.find((b) => {
+    return (
+      b.asset_code === assetCode &&
+      b.asset_issuer === assetIssuer
+    );
+  });
+
+  if (!trustline) return null;
+  return {
+    balance: String(trustline.balance ?? '0'),
+    isAuthorized: Boolean(trustline.is_authorized ?? true),
+  };
+}
+
+export function checkSourceWallet(
+  sourceAccount: HorizonLikeAccount,
+  asset: KmsAssetSpec,
+  paymentAmount: string
+): string | null {
+  const xlmBalance = parseFloat(findNativeBalance(sourceAccount));
+  if (xlmBalance < parseFloat(MIN_XLM_BALANCE)) {
+    return `INSUFFICIENT_GAS: XLM balance ${xlmBalance} below minimum ${MIN_XLM_BALANCE}`;
+  }
+
+  if (!asset.isNative) {
+    const sourceBalance = findTokenBalance(sourceAccount, asset.assetCode, asset.assetIssuer);
+
+    if (!sourceBalance) {
+      return 'WALLET_NO_TRUSTLINE: Source wallet missing trustline for token';
+    }
+
+    if (!sourceBalance.isAuthorized) {
+      return 'WALLET_NOT_AUTHORIZED: Source trustline is frozen';
+    }
+
+    const tokenBalanceNum = parseFloat(sourceBalance.balance);
+    const paymentAmountNum = parseFloat(paymentAmount);
+    if (tokenBalanceNum < paymentAmountNum) {
+      return `INSUFFICIENT_TOKEN_BALANCE: Available ${tokenBalanceNum}, required ${paymentAmountNum}`;
+    }
+  }
+
+  return null;
+}
+
+export function buildAssetSpec(code?: string, issuer?: string): KmsAssetSpec {
+  const isNative = !issuer || !code || code.toUpperCase() === 'XLM';
+  if (isNative) {
+    return {
+      isNative: true,
+      asset: StellarSdk.Asset.native(),
+      assetCode: 'XLM',
+    };
+  }
+  return {
+    isNative: false,
+    asset: new StellarSdk.Asset(code.toUpperCase(), issuer),
+    assetCode: code.toUpperCase(),
+    assetIssuer: issuer,
+  };
+}
+
+function getSdkNetworkConfig(network: string): { serverUrl: string; networkPassphrase: string } {
+  const normalized = network.toUpperCase();
+  if (normalized === 'PUBLIC' || normalized === 'MAINNET') {
+    return {
+      serverUrl: HORIZON_URLS.public,
+      networkPassphrase: StellarSdk.Networks.PUBLIC,
+    };
+  }
+  return {
+    serverUrl: HORIZON_URLS.testnet,
+    networkPassphrase: StellarSdk.Networks.TESTNET,
+  };
+}
+
+export function attachKmsSignature(
+  transaction: StellarSdk.Transaction,
+  sourcePublicKey: string,
+  signature: Buffer,
+  networkPassphrase: string
+): StellarSdk.Transaction {
+  const envelope = transaction.toEnvelope();
+  const hint = StellarSdk.Keypair.fromPublicKey(sourcePublicKey).signatureHint();
+  const decorated = new StellarSdk.xdr.DecoratedSignature({ hint, signature });
+  envelope.v1().signatures().push(decorated);
+  return new StellarSdk.Transaction(envelope, networkPassphrase);
+}
+
+async function signAndSubmitTransaction(
+  server: StellarSdk.Horizon.Server,
+  networkPassphrase: string,
+  transaction: StellarSdk.Transaction,
+  sourcePublicKey: string
+): Promise<{ hash: string; success: boolean; error?: string }> {
+  try {
+    const hash = transaction.hash();
+    const signature = await signTxHash(hash);
+    const signed = attachKmsSignature(transaction, sourcePublicKey, signature, networkPassphrase);
+    const result = await server.submitTransaction(signed);
+    return { hash: result.hash, success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { hash: '', success: false, error: message };
+  }
+}
+
+async function kmsDisburse(
+  destination: string,
+  amount: string,
+  memo: string,
+  network: string,
+  tokenCode?: string,
+  tokenAddress?: string
+): Promise<{ hash: string; success: boolean; error?: string }> {
+  const { serverUrl, networkPassphrase } = getSdkNetworkConfig(network);
+  const server = new StellarSdk.Horizon.Server(serverUrl);
+  const sourcePublicKey = await resolveSourcePublicKey();
+  const sourceAccount = await server.loadAccount(sourcePublicKey);
+
+  const amountFormatted = parseFloat(amount).toFixed(7).replace(/\.?0+$/, '');
+  toStroops(amountFormatted);
+
+  const asset = buildAssetSpec(tokenCode, tokenAddress);
+  const validationError = checkSourceWallet(sourceAccount, asset, amountFormatted);
+  if (validationError) {
+    return { hash: '', success: false, error: validationError };
+  }
+
+  const destExists = await server.loadAccount(destination).catch(() => null);
+
+  let builder = new StellarSdk.TransactionBuilder(sourceAccount, {
+    fee: StellarSdk.BASE_FEE.toString(),
+    networkPassphrase,
+  });
+
+  if (!destExists && asset.isNative) {
+    builder = builder.addOperation(
+      StellarSdk.Operation.createAccount({
+        destination,
+        startingBalance: amountFormatted,
+      })
+    );
+  } else {
+    builder = builder.addOperation(
+      StellarSdk.Operation.payment({
+        destination,
+        asset: asset.asset,
+        amount: amountFormatted,
+      })
+    );
+  }
+
+  if (memo) {
+    builder = builder.addMemo(StellarSdk.Memo.text(memo));
+  }
+
+  const transaction = builder.setTimeout(30).build();
+  return signAndSubmitTransaction(server, networkPassphrase, transaction, sourcePublicKey);
+}
+
+async function kmsFund(destination: string, startingBalance?: string): Promise<FundWalletResult> {
+  const network = (process.env.STELLAR_NETWORK || 'testnet').toUpperCase();
+  const { serverUrl, networkPassphrase } = getSdkNetworkConfig(network);
+  const server = new StellarSdk.Horizon.Server(serverUrl);
+  const sourcePublicKey = await resolveSourcePublicKey();
+  const sourceAccount = await server.loadAccount(sourcePublicKey);
+
+  const balance = startingBalance || DEFAULT_STARTING_BALANCE;
+  toStroops(balance);
+
+  const xlmBalance = parseFloat(findNativeBalance(sourceAccount));
+  if (xlmBalance < parseFloat(balance) + parseFloat(MIN_XLM_BALANCE)) {
+    return {
+      success: false,
+      hash: '',
+      already_exists: false,
+      error: `INSUFFICIENT_GAS: XLM balance ${xlmBalance}`,
+    };
+  }
+
+  const destExists = await server.loadAccount(destination).catch(() => null);
+  if (destExists) {
+    return { success: true, hash: '', already_exists: true };
+  }
+
+  const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+    fee: StellarSdk.BASE_FEE.toString(),
+    networkPassphrase,
+  })
+    .addOperation(
+      StellarSdk.Operation.createAccount({
+        destination,
+        startingBalance: balance,
+      })
+    )
+    .setTimeout(30)
+    .build();
+
+  const result = await signAndSubmitTransaction(server, networkPassphrase, transaction, sourcePublicKey);
+  return { success: result.success, hash: result.hash, already_exists: false, error: result.error };
+}
+
+function isWorkerProvider(): boolean {
+  return loadGcpKmsConfig().provider === 'worker';
+}
+
 export interface DisburseResult {
   hash: string;
   success: boolean;
@@ -223,6 +478,10 @@ export async function fundWallet(
   destination: string,
   startingBalance?: string
 ): Promise<FundWalletResult> {
+  if (!isWorkerProvider()) {
+    return kmsFund(destination, startingBalance);
+  }
+
   const workerUrl = (process.env.WORKER_URL || DEFAULT_WORKER_URL) + '/fund';
   const authToken = process.env.WORKER_AUTH_TOKEN;
 
@@ -279,14 +538,16 @@ export async function disburseUSDC(
     return { hash: order.transaction_hash || '', success: order.order_state === OrderState.COMPLETED, error: order.order_state === OrderState.COMPLETED ? undefined : 'ORDER_NOT_ELIGIBLE' };
   }
 
-  const result = await callWorker(
-    recipientPublicKey,
-    amount,
-    paymentCode,
-    network,
-    tokenCode,
-    tokenAddress
-  );
+  const result = isWorkerProvider()
+    ? await callWorker(
+        recipientPublicKey,
+        amount,
+        paymentCode,
+        network,
+        tokenCode,
+        tokenAddress
+      )
+    : await kmsDisburse(recipientPublicKey, amount, paymentCode, network, tokenCode, tokenAddress);
 
   if (result.success) {
     await db('orders')

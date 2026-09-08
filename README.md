@@ -1,48 +1,201 @@
-# payment_svc — Secure fiat ↔ USDC backend
+# payment_svc — Seamless fiat ↔ USDC rails
 
-Reliable rails for partners to convert VND ↔ USDC using SePay for fiat collection and Stellar for USDC disbursement.
+> The frictionless bridge that turns Vietnamese Dong into USDC and back — quietly, reliably, and securely.
 
-Goals
-- Secure, auditable order lifecycle for partner integrations
-- Reliable webhook-driven fiat collection (SePay) and resilient disbursement pipeline
-- Safe Stellar payouts with an external signer worker and encrypted hot wallet secrets
+`payment_svc` is a backend for partner integrations to move between fiat (VND) and crypto (USDC/XLM). It quotes live prices, collects payments through Vietnamese banks via SePay, and settles on the Stellar network — without forcing partners to reinvent payment infrastructure.
 
-Tech stack
-- Node.js + TypeScript, Fastify 4
-- PostgreSQL via Knex 3, Kafka (kafkajs)
-- Stellar SDK for USDC, Cloudflare Worker signer
-- SePay SDK for payment gateway integration
+## 🎯 Philosophy
 
-Delivered features (headline)
-- Deposit & withdrawal order flows
-- Price engine with spreads and fee audit logs
-- SePay IPN handler with deduplication
-- Kafka-based disbursement pipeline → Stellar payouts
-- Signed, retryable callbacks with logging and replay protection
-- Admin endpoints for config and secret rotation
+Financial integrations live or die on **trust, traceability, and uptime**. So `payment_svc` is built around three commitments:
 
-Quickstart (very short)
-1. Install: `npm install`
-2. Copy env: `cp .env.example .env` and edit required vars
-3. Run migrations (Knex requires explicit env):
-   `DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... npx tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts`
-4. Start dev server: `npm run dev`
-5. Run worker: `npm run worker:disburse`
+1. **Secure by architecture** — hot-wallet secrets never sit in the API process; Stellar transactions are signed via GCP Cloud KMS Ed25519 (default provider, ADC-backed), with an isolated Cloudflare signer as the legacy fallback until decommissioned.
+2. **Predictable by design** — every state change is observable, audited, and delivered to you through signed webhooks.
+3. **Resilient by default** — a durable Kafka pipeline absorbs failures and retries until settlement succeeds.
 
-Important config
-See `.env.example` for all variables. Most-critical: `SEPAY_KEY`, `PARTNER_APP_KEY`, `CALLBACK_SIGNATURE_SECRET`, Kafka and Stellar credentials.
+## 🧱 Architecture
 
-Architecture (one line)
-Client → Fastify → Services → DB / Kafka → disburseWorker → Cloudflare signer → Stellar
+### The Conversion Pipeline
 
-Where to look next
-- `src/app.ts` — app factory and routes
-- `src/services/` — business logic (orderService, priceService, callbackService)
-- `src/workers/disburseWorker.ts` — Kafka consumer for disbursement
-- `docs/API_INTEGRATION.md` — integration details for partners
+```
+Partner (Partner-App-Key)
+        │ deposit / withdrawal orders
+        ▼
+   Fastify API ──► Services ──► PostgreSQL / Kafka
+                                        │
+                                        ▼
+                            disburseWorker ──► GCP KMS signer / Cloudflare ──► Stellar
+                                        ▲
+            Stellar Listener ──► Kafka / HTTP
+```
 
-Troubleshooting (quick)
-- If disbursements fail: check Kafka connectivity, STELLAR_HOT_WALLET_ENCRYPTION_KEY, and worker logs
-- If callbacks fail: verify `CALLBACK_SIGNATURE_SECRET` and inspect `callback_logs`
+### Components
 
-For full operational details, API examples and schema notes, see `docs/API_INTEGRATION.md` and the `src/` codebase.
+| Component | Role |
+|---|---|
+| **Fastify API** | Order lifecycle, quoting, webhook handling, admin |
+| **PostgreSQL / Kafka** | Durability for orders and the disbursement queue |
+| **disburseWorker** | Consumes Kafka, executes payments via the signer |
+| **GCP KMS (default) / Cloudflare Signer (legacy)** | Signs + submits Stellar txs; private keys never touch the app |
+| **Stellar Listener** | Watches incoming token payments, forwards via Kafka or HTTP |
+
+## ✨ Key Features
+
+### 1. Live Price Engine
+Buy/sell quotes built on Binance P2P median, with configurable spreads, per-token fees, minimum fees, and an audit trail for every fee change.
+
+### 2. Bank-Payment Collection
+SePay integration for Vietnamese bank transfers (QiR) plus NAPAS card/e-wallet checkout — each order gets a unique `payment_code` embedded in the transfer description.
+
+### 3. Resumable Disbursement
+Confirmed fiat payments are enqueued on Kafka and executed on Stellar by a dedicated worker; transactions are signed in-process via GCP Cloud KMS (or the legacy Cloudflare signer), keeping secrets outside the API process.
+
+### 4. Signed, Replay-Safe Callbacks
+Every order state change is POSTed to your URL, HMAC-signed, retried (up to 3×), logged, and protected against replay within a 5-minute window.
+
+### 5. Full Admin & CMS
+Operate config, secret rotation, statistics, partners, and KYC users through admin routes — with a JWT-secured control plane.
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** 22+
+- **PostgreSQL**
+- **Kafka** (for the disbursement pipeline)
+
+### Installation
+
+```bash
+npm install
+cp .env.example .env
+```
+
+Fill in the required credentials (SePay, DB, Kafka, Stellar, callback secret) inside `.env`.
+
+Stellar signing: default `STELLAR_SIGNER_PROVIDER=kms` signs via GCP Cloud KMS (ADC auth; requires `GCP_KMS_*` vars + `STELLAR_HOT_WALLET_PUBLIC_KEY`). Set `STELLAR_SIGNER_PROVIDER=worker` only for the legacy Cloudflare fallback.
+
+### Database Migrations
+
+Knex needs explicit env vars (it doesn't auto-load `.env`):
+
+```bash
+DB_HOST=127.0.0.1 DB_USER=admin DB_PASSWORD=123456 DB_NAME=payment_svc \
+  npx tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts
+```
+
+### Run
+
+```bash
+npm run dev              # API server
+npm run worker:disburse  # Kafka consumer → Stellar payouts
+```
+
+## 💵 Usage / Data Flows
+
+### Deposit (Buy USDC)
+
+```
+Partner → deposit order (amount, asset, recipient, callback)
+   → quote + save order (CREATED) → return payment_code
+   → user transfers VND (content = payment_code)
+   → SePay webhook confirms + validates amount
+   → order PROCESSING → Kafka DISBURSE_CRYPTO
+   → signer (GCP KMS / legacy Cloudflare) sends USDC via Stellar
+   → order COMPLETED → signed callback to partner
+```
+
+### Withdrawal (Sell USDC)
+
+```
+Partner → withdrawal order (amount, asset, callback, bank info)
+   → save order (CREATED) → callback
+   → incoming USDC hits hot wallet (listener/webhook confirms)
+   → order PROCESSING → VND payout
+   → order COMPLETED → signed callback to partner
+```
+
+## 📡 API Overview
+
+| Prefix | Purpose | Auth |
+|---|---|---|
+| `/api/orders` | Deposit / withdrawal / status / cancel | Partner-App-Key |
+| `/api/rate` | Live buy & sell rates | Partner-App-Key |
+| `/api/users` | KYC + payment methods | Partner-App-Key |
+| `/api/webhooks` | SePay, SePay IPN, Stellar incoming | API key / signature |
+| `/config` | Fee & spread config | JWT (write) |
+| `/admin` | Login, stats, secret rotation | JWT |
+| `/cms` | Admin management, orders, partners | JWT |
+| `/landing` | Public rates & history | None |
+
+Full request/response examples live in [`docs/API_INTEGRATION.md`](docs/API_INTEGRATION.md). Interactive docs at `/docs` (Swagger UI).
+
+## 🧭 Order Lifecycle
+
+| State | Code | Meaning |
+|---|---|---|
+| CREATED | 1 | Awaiting payment |
+| PROCESSING | 2 | Payment confirmed, processing |
+| COMPLETED | 3 | Finished successfully |
+| FAILED | 4 | Failed |
+| CANCELLED | 5 | Cancelled |
+
+```
+CREATED → PROCESSING → COMPLETED
+CREATED → PROCESSING → FAILED
+CREATED → CANCELLED
+PROCESSING → CANCELLED   (only if no irreversible step)
+```
+
+## 🔐 Authentication
+
+| Direction | Method |
+|---|---|
+| Client → Service (orders) | `Partner-App-Key` header |
+| Provider → Service (webhooks) | SePay API key / Stellar bearer / HMAC signature |
+| Service → Client (callbacks) | HMAC-SHA256 (`X-Timestamp` + `X-Signature`) |
+
+## 🐳 Docker
+
+Multi-stage `Dockerfile` (builder → production) plus compose files:
+
+```bash
+docker compose up -d --build
+```
+
+- `payment-api` — Fastify API (healthchecked at `/health`)
+- `stellar-listener` — chain event monitor (Kafka or HTTP fallback)
+
+Migrations run in-process on startup, so production needs no `tsx`. Secrets are injected via `.env`.
+
+## 📁 Project Structure
+
+```
+payment_svc/
+├── src/
+│   ├── server.ts               # Entry point
+│   ├── app.ts                  # Fastify factory + route registration
+│   ├── controllers/            # Request handlers
+│   ├── services/               # Business logic (order, price, callback, stellar…)
+│   ├── routes/                 # Route + JSON Schema definitions
+│   ├── middleware/             # Auth + error handling
+│   ├── workers/disburseWorker.ts # Kafka disbursement consumer
+│   ├── migrations/             # Knex schema migrations
+│   └── db.ts                   # Shared Knex singleton
+├── stellar_signer_worker/      # Legacy Cloudflare Worker signer (retained as fallback)
+├── stellar-listener/           # Incoming-token event monitor
+├── docs/API_INTEGRATION.md     # Full API reference for partners
+└── dist/                       # Compiled output (build)
+```
+
+## 🤝 Contributing
+
+Contributions welcome!
+
+1. Fork the repo
+2. Create your feature branch
+3. Commit and push
+4. Open a pull request
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE). © 2026 Orbit Labs
