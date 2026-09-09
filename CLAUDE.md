@@ -178,7 +178,7 @@ All errors return standardized format with `X-Trace-ID` header:
 - `orderService.ts` — deposit/withdrawal creation, confirmPayment, cancelOrder, handleChainEvent, formatOrderResponse
 - `queueService.ts` — Kafka producer: emitDisburseCrypto, emitOrderPaid
 - `stellarService.ts` — Stellar payment: initStellarServer, loadHotWallet, disburseUSDC (in-process signing via GCP Cloud KMS)
-- `gcpKmsService.ts` — GCP Cloud KMS Ed25519 signing: signTxHash (raw data field for PureEdDSA), getStellarPublicKey, resolveSourcePublicKey (wallet-address verification)
+- `gcpKmsService.ts` — GCP Cloud KMS Ed25519 signing: signTxHash (raw data field for PureEdDSA), getStellarPublicKey, getHotWalletAddress/resolveSourcePublicKey (hot-wallet address derived from the KMS key-version config, cache keyed by key version)
 - `encryptionService.ts` — AES-256-GCM encrypt/decrypt for wallet secrets
 - `callbackService.ts` — webhook callback with retry (3×), logging, HMAC signature, dual-secret rotation
 - `sepayService.ts` — webhook handler, deduplication
@@ -236,12 +236,11 @@ All via `import 'dotenv/config'`. See `.env.example`:
 | `STELLAR_NETWORK` | testnet/public |
 | `STELLAR_HOT_WALLET_NAME` | Default: stellar_hot_wallet |
 | `STELLAR_HOT_WALLET_ENCRYPTION_KEY` | 32+ char key for AES-256-GCM |
-| `STELLAR_HOT_WALLET_PUBLIC_KEY` | Stellar `G...` address of the imported KMS key (verified against KMS public key) |
 | `GCP_KMS_PROJECT_ID` | GCP project id (e.g. graceful-envoy-463407-a1) |
 | `GCP_KMS_LOCATION_ID` | KMS location (e.g. asia-southeast1) |
 | `GCP_KMS_KEY_RING` | KMS key ring (e.g. stellar-wallet) |
 | `GCP_KMS_KEY_ID` | KMS crypto key (e.g. stellar-hotwallet-keyring) |
-| `GCP_KMS_KEY_VERSION` | KMS key version (default: 1) |
+| `GCP_KMS_KEY_VERSION` | KMS key version (default: 1) — controls the active Stellar hot wallet (its address is derived from the KMS key; no address env var is kept) |
 | `ADMIN_JWT_SECRET` | JWT signing secret for admin routes |
 | `GOOGLE_AI_API_KEY` | Google AI API key — Gemini fallback for KYC ID recognition |
 | `GEMINI_MODEL` | Gemini vision model for ID recognition (default: gemini-3.6-flash) |

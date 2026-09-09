@@ -23,6 +23,9 @@ COPY --from=base /app/node_modules ./node_modules
 # Copy stellar-listener source code (TypeScript files)
 COPY stellar-listener ./stellar-listener
 
+# Copy shared source (gcpKmsService + config) for KMS-backed hot-wallet address resolution
+COPY src ./src
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

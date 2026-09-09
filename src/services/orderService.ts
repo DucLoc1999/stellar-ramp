@@ -15,6 +15,7 @@ import type { Usdt247Order, Usdt247PaymentInfo, Usdt247Timestamp } from '../mode
 import { OrderState, ProcessingState } from '../models/types';
 import * as userService from './userService';
 import * as paymentMethodService from './paymentMethodService';
+import { getHotWalletAddress } from './gcpKmsService';
 
 export { DepositRequest, WithdrawalRequest, OrderState } from '../models/types';
 
@@ -485,7 +486,7 @@ export async function createDeposit(
   if (req.callback) {
     fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
-  const walletAddress = process.env.WALLET_ADDRESS || '';
+  const walletAddress = await getHotWalletAddress();
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
@@ -579,7 +580,7 @@ export async function createWithdrawal(
     fireCallback(req.callback, order.id, 0, OrderState.CREATED, 0, 10).catch((err) => console.error('[OrderService] fireCallback failed:', err));
   }
 
-  const walletAddress = process.env.WALLET_ADDRESS || '';
+  const walletAddress = await getHotWalletAddress();
   return await toApiOrder(order as OrderRow, {
     user_id: req.user_id ?? '',
     client_ip: options?.clientIp ?? '',
@@ -946,8 +947,10 @@ export async function bypassPayment(adminKey: string, orderId: number): Promise<
     return { error: 'ORDER_NOT_ELIGIBLE' };
   }
 
-  const walletAddress = process.env.WALLET_ADDRESS || '';
-  if (!walletAddress) {
+  let walletAddress: string;
+  try {
+    walletAddress = await getHotWalletAddress();
+  } catch {
     return { error: 'WALLET_ADDRESS_NOT_CONFIGURED' };
   }
 

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Redis from 'ioredis';
 import db from '../db';
 import { getAccountBalance } from './payoutService';
+import { getHotWalletAddress } from './gcpKmsService';
 import { OrderState } from '../models/types';
 
 const MICRO_SCALE = 7;
@@ -111,10 +112,7 @@ async function releaseReservationByKey(
 }
 
 async function refreshBalanceFromApi(token: string): Promise<string | null> {
-  const walletAddress = (process.env.WALLET_ADDRESS || '').trim();
   const network = process.env.STELLAR_NETWORK || 'testnet';
-
-  console.log(`[Reservation] refreshBalanceFromApi: token=${token}, walletAddress=${walletAddress || '(not set)'}, network=${network}`);
 
   if (token === 'VND') {
     const result = await getAccountBalance();
@@ -123,17 +121,13 @@ async function refreshBalanceFromApi(token: string): Promise<string | null> {
     return String(result.availableBalance ?? 0);
   }
 
-  if (token === 'USDC') {
-    const { getUsdcBalance } = await import('./stellarService');
-    const balance = await getUsdcBalance(walletAddress, network);
-    console.log(`[Reservation] USDC balance from Horizon: ${balance} for wallet ${walletAddress}`);
-    return balance;
-  }
-
-  if (token === 'XLM') {
-    const { getXlmBalance } = await import('./stellarService');
-    const balance = await getXlmBalance(walletAddress, network);
-    console.log(`[Reservation] XLM balance from Horizon: ${balance} for wallet ${walletAddress}`);
+  if (token === 'USDC' || token === 'XLM') {
+    const walletAddress = await getHotWalletAddress();
+    const { getUsdcBalance, getXlmBalance } = await import('./stellarService');
+    const balance = token === 'USDC'
+      ? await getUsdcBalance(walletAddress, network)
+      : await getXlmBalance(walletAddress, network);
+    console.log(`[Reservation] ${token} balance from Horizon: ${balance} for wallet ${walletAddress}`);
     return balance;
   }
 
@@ -199,9 +193,12 @@ export async function reserveForOrder(params: {
   await pruneExpired(now, 100);
 
   let balanceRaw = await client.get(balanceKey(token));
+  const walletLabel = await (async () => {
+    try { return await getHotWalletAddress(); } catch { return '(not set)'; }
+  })();
 
   console.log(`[Reservation] reserveForOrder: paymentCode=${params.paymentCode}, direction=${params.direction}, token=${token}, amount=${params.amount}`);
-  console.log(`[Reservation] reserveForOrder: cached balanceRaw=${balanceRaw}, walletAddress=${(process.env.WALLET_ADDRESS || '').trim() || '(not set)'}`);
+  console.log(`[Reservation] reserveForOrder: cached balanceRaw=${balanceRaw}, walletAddress=${walletLabel}`);
 
   if (!balanceRaw) {
     console.log(`[Reservation] No cached balance for ${token}, refreshing from API...`);
@@ -222,7 +219,7 @@ export async function reserveForOrder(params: {
 
     console.log(`[Reservation] reserveForOrder attempt ${attempt}: paymentCode=${params.paymentCode}, token=${token}, amount=${params.amount}, buffer=${process.env[`RESERVATION_BUFFER_${token}`] ?? '1'}`);
     console.log(`[Reservation]   Redis state: currentBalance=${currentBalance}, reservedRaw=${reservedRaw}, existing=${existing}`);
-    console.log(`[Reservation]   walletAddress=${(process.env.WALLET_ADDRESS || '').trim() || '(not set)'}`);
+    console.log(`[Reservation]   walletAddress=${walletLabel}`);
 
     if (existing) {
       await client.unwatch();
@@ -313,13 +310,15 @@ export async function rollbackReservation(paymentCode: string): Promise<boolean>
 export async function syncWalletBalances(): Promise<void> {
   if (!isEnabled()) return;
   const client = redis!;
-  const walletAddress = (process.env.WALLET_ADDRESS || '').trim();
-  if (!walletAddress) {
-    console.warn('[Reservation] syncWalletBalances: WALLET_ADDRESS not set, skipping');
+  const network = process.env.STELLAR_NETWORK || 'testnet';
+  let walletAddress: string;
+  try {
+    walletAddress = await getHotWalletAddress();
+  } catch {
+    console.warn('[Reservation] syncWalletBalances: hot wallet address not resolvable (KMS), skipping');
     ready = false;
     return;
   }
-  const network = process.env.STELLAR_NETWORK || 'testnet';
   console.log(`[Reservation] syncWalletBalances: syncing USDC/XLM for wallet=${walletAddress}, network=${network}`);
   const { getUsdcBalance, getXlmBalance } = await import('./stellarService');
   const [usdc, xlm] = await Promise.all([

@@ -72,7 +72,7 @@ cp .env.example .env
 
 Fill in the required credentials (SePay, DB, Kafka, Stellar, callback secret) inside `.env`.
 
-Stellar signing is done in-process via GCP Cloud KMS Ed25519 (ADC auth; requires `GCP_KMS_*` vars + `STELLAR_HOT_WALLET_PUBLIC_KEY`).
+Stellar signing is done in-process via GCP Cloud KMS Ed25519 (ADC auth; requires `GCP_KMS_*` vars). The hot-wallet public address is derived from the KMS key-version config (`GCP_KMS_KEY_VERSION`) — no address env var is kept.
 
 ### Database Migrations
 

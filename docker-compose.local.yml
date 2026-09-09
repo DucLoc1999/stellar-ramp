@@ -64,9 +64,12 @@ services:
       - .env.local
     environment:
       NODE_ENV: ${NODE_ENV:-development}
+      # GCP ADC for KMS-backed hot-wallet address resolution (outside /app/data chown)
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-creds.json
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/home/loc/.config/gcloud/application_default_credentials.json}:/app/gcp-creds.json:ro
     logging:
       driver: 'json-file'
       options:

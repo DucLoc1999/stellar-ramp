@@ -9,6 +9,7 @@ if (process.stderr._handle && typeof process.stderr._handle.setBlocking === 'fun
 
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { Kafka, Producer, logLevel } from 'kafkajs';
+import { getHotWalletAddress } from '../../src/services/gcpKmsService';
 
 const Asset = StellarSdk.Asset;
 const Server = StellarSdk.Horizon.Server;
@@ -33,11 +34,6 @@ let producer: Producer | null = null;
 let closeStream: (() => void) | null = null;
 let running = true;
 
-const WALLET_ADDRESS = process.env.WALLET_ADDRESS;
-if (!WALLET_ADDRESS) {
-  console.error('[StellarListener] WALLET_ADDRESS not set');
-  process.exit(1);
-}
 const WALLET_LABEL = 'hot_wallet';
 const NETWORK = process.env.STELLAR_NETWORK || 'testnet';
 
@@ -289,12 +285,20 @@ async function main(): Promise<void> {
   const horizonUrl = getHorizonUrl(NETWORK);
   const server = new Server(horizonUrl);
 
+  let walletAddress: string;
+  try {
+    walletAddress = await getHotWalletAddress();
+  } catch (error) {
+    console.error('[StellarListener] Failed to resolve hot wallet address from GCP KMS:', (error as Error).message);
+    process.exit(1);
+  }
+
   console.log(`[StellarListener] Horizon: ${horizonUrl}`);
   console.log(`[StellarListener] Network: ${NETWORK}`);
-  console.log(`[StellarListener] Wallet: ${WALLET_LABEL} (${WALLET_ADDRESS})`);
+  console.log(`[StellarListener] Wallet: ${WALLET_LABEL} (${walletAddress})`);
   console.log(`[StellarListener] Monitoring assets: ${monitoredAssets.map((a) => a.code).join(', ')}`);
 
-  startWalletListener(server, WALLET_ADDRESS, WALLET_LABEL, monitoredAssets);
+  startWalletListener(server, walletAddress, WALLET_LABEL, monitoredAssets);
 
   console.log('[StellarListener] Listener started, waiting for events...');
 

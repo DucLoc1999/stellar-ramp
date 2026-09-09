@@ -86,36 +86,35 @@ export function parseEd25519PublicKeyPem(pem: string): Buffer {
   return raw;
 }
 
-let cachedPublicAddress: string | null = null;
+// Public address cache keyed by the KMS key-version path: changing
+// GCP_KMS_KEY_VERSION at runtime resolves a new address automatically.
+const publicKeyCache = new Map<string, string>();
 
 export async function getStellarPublicKey(): Promise<string> {
-  if (cachedPublicAddress) {
-    return cachedPublicAddress;
+  const path = keyVersionPath();
+  const cached = publicKeyCache.get(path);
+  if (cached) {
+    return cached;
   }
-  const [publicKey] = await getClient().getPublicKey({ name: keyVersionPath() });
+  const [publicKey] = await getClient().getPublicKey({ name: path });
   if (!publicKey.pem) {
     throw new Error('KMS returned no public key');
   }
   const raw = parseEd25519PublicKeyPem(publicKey.pem);
-  cachedPublicAddress = StrKey.encodeEd25519PublicKey(raw);
-  return cachedPublicAddress;
+  const address = StrKey.encodeEd25519PublicKey(raw);
+  publicKeyCache.set(path, address);
+  return address;
 }
 
 export function resetPublicKeyCache(): void {
-  cachedPublicAddress = null;
+  publicKeyCache.clear();
+}
+
+/** Hot-wallet address unified from the GCP KMS key-version config. */
+export function getHotWalletAddress(): Promise<string> {
+  return resolveSourcePublicKey();
 }
 
 export async function resolveSourcePublicKey(): Promise<string> {
-  const configured = process.env.STELLAR_HOT_WALLET_PUBLIC_KEY;
-  const kmsAddress = await getStellarPublicKey();
-  if (configured && configured.trim()) {
-    if (configured.trim() !== kmsAddress) {
-      throw new KmsSigningError(
-        `STELLAR_HOT_WALLET_PUBLIC_KEY (${configured}) does not match KMS key ${kmsAddress}`,
-        'KMS_SIGNING_ERROR'
-      );
-    }
-    return kmsAddress;
-  }
-  return kmsAddress;
+  return getStellarPublicKey();
 }

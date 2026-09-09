@@ -80,6 +80,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.addHook('onReady', async () => {
     try {
+      const { getHotWalletAddress } = await import('./services/gcpKmsService');
+      try {
+        const hotWallet = await getHotWalletAddress();
+        logger.info({ hotWallet }, 'Active Stellar hot wallet (from KMS key-version config)');
+      } catch (error) {
+        logger.warn({ error: error instanceof Error ? error.message : String(error) }, 'Could not resolve hot-wallet address from GCP KMS');
+      }
+
       await runMigrations();
       await ensureBootstrapAdmin();
       await ensureBootstrapPartner();
