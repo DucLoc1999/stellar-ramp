@@ -8,7 +8,7 @@
 
 Financial integrations live or die on **trust, traceability, and uptime**. So `payment_svc` is built around three commitments:
 
-1. **Secure by architecture** — hot-wallet secrets never sit in the API process; Stellar transactions are signed via GCP Cloud KMS Ed25519 (default provider, ADC-backed), with an isolated Cloudflare signer as the legacy fallback until decommissioned.
+1. **Secure by architecture** — hot-wallet secrets never sit in the API process; Stellar transactions are signed in-process via GCP Cloud KMS Ed25519 (ADC-backed), so private keys never touch the application.
 2. **Predictable by design** — every state change is observable, audited, and delivered to you through signed webhooks.
 3. **Resilient by default** — a durable Kafka pipeline absorbs failures and retries until settlement succeeds.
 
@@ -23,7 +23,7 @@ Partner (Partner-App-Key)
    Fastify API ──► Services ──► PostgreSQL / Kafka
                                         │
                                         ▼
-                            disburseWorker ──► GCP KMS signer / Cloudflare ──► Stellar
+                            disburseWorker ──► GCP Cloud KMS signer ──► Stellar
                                         ▲
             Stellar Listener ──► Kafka / HTTP
 ```
@@ -35,7 +35,7 @@ Partner (Partner-App-Key)
 | **Fastify API** | Order lifecycle, quoting, webhook handling, admin |
 | **PostgreSQL / Kafka** | Durability for orders and the disbursement queue |
 | **disburseWorker** | Consumes Kafka, executes payments via the signer |
-| **GCP KMS (default) / Cloudflare Signer (legacy)** | Signs + submits Stellar txs; private keys never touch the app |
+| **GCP Cloud KMS** | Signs + submits Stellar txs in-process; private keys never touch the app |
 | **Stellar Listener** | Watches incoming token payments, forwards via Kafka or HTTP |
 
 ## ✨ Key Features
@@ -47,7 +47,7 @@ Buy/sell quotes built on Binance P2P median, with configurable spreads, per-toke
 SePay integration for Vietnamese bank transfers (QiR) plus NAPAS card/e-wallet checkout — each order gets a unique `payment_code` embedded in the transfer description.
 
 ### 3. Resumable Disbursement
-Confirmed fiat payments are enqueued on Kafka and executed on Stellar by a dedicated worker; transactions are signed in-process via GCP Cloud KMS (or the legacy Cloudflare signer), keeping secrets outside the API process.
+Confirmed fiat payments are enqueued on Kafka and executed on Stellar by a dedicated worker; transactions are signed in-process via GCP Cloud KMS, keeping secrets outside the API process.
 
 ### 4. Signed, Replay-Safe Callbacks
 Every order state change is POSTed to your URL, HMAC-signed, retried (up to 3×), logged, and protected against replay within a 5-minute window.
@@ -72,7 +72,7 @@ cp .env.example .env
 
 Fill in the required credentials (SePay, DB, Kafka, Stellar, callback secret) inside `.env`.
 
-Stellar signing: default `STELLAR_SIGNER_PROVIDER=kms` signs via GCP Cloud KMS (ADC auth; requires `GCP_KMS_*` vars + `STELLAR_HOT_WALLET_PUBLIC_KEY`). Set `STELLAR_SIGNER_PROVIDER=worker` only for the legacy Cloudflare fallback.
+Stellar signing is done in-process via GCP Cloud KMS Ed25519 (ADC auth; requires `GCP_KMS_*` vars + `STELLAR_HOT_WALLET_PUBLIC_KEY`).
 
 ### Database Migrations
 
@@ -100,7 +100,7 @@ Partner → deposit order (amount, asset, recipient, callback)
    → user transfers VND (content = payment_code)
    → SePay webhook confirms + validates amount
    → order PROCESSING → Kafka DISBURSE_CRYPTO
-   → signer (GCP KMS / legacy Cloudflare) sends USDC via Stellar
+   → signer (GCP Cloud KMS) sends USDC via Stellar
    → order COMPLETED → signed callback to partner
 ```
 
@@ -181,7 +181,6 @@ payment_svc/
 │   ├── workers/disburseWorker.ts # Kafka disbursement consumer
 │   ├── migrations/             # Knex schema migrations
 │   └── db.ts                   # Shared Knex singleton
-├── stellar_signer_worker/      # Legacy Cloudflare Worker signer (retained as fallback)
 ├── stellar-listener/           # Incoming-token event monitor
 ├── docs/API_INTEGRATION.md     # Full API reference for partners
 └── dist/                       # Compiled output (build)

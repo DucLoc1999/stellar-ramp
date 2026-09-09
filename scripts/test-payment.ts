@@ -1,7 +1,5 @@
 import 'dotenv/config';
-
-const WORKER_URL = process.env.WORKER_URL || 'http://localhost:8787';
-const WORKER_AUTH_TOKEN = process.env.WORKER_AUTH_TOKEN || 'Ms/U1IhNyj7L7VIjDPL1r6nPwJGlFMXiXcPnRpQ5vG2S';
+import { kmsDisburse } from '../src/services/stellarService';
 
 const RECIPIENT = 'GABQEQMD4XALCSMHHMUBXHSXQPWOV47WMF5F4UCUZFR7DRD37OSX7SDH';
 const AMOUNT = '1.0';
@@ -43,42 +41,22 @@ async function pollTx(hash: string, maxAttempts = 3, delayMs = 3000): Promise<bo
 }
 
 async function main() {
-  console.log('=== Worker Transfer Test ===');
+  console.log('=== KMS Transfer Test ===');
 
   // 1. Check balance before
   console.log('\n[1/4] Checking balance before transfer...');
   const balanceBefore = await getUsdcBalance(RECIPIENT);
   console.log(`Balance before: ${balanceBefore} ${ASSET_CODE}`);
 
-  // 2. Call worker to transfer
-  console.log('\n[2/4] Calling worker to execute transfer...');
-  const workerRes = await fetch(WORKER_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${WORKER_AUTH_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      destination: RECIPIENT,
-      amount: AMOUNT,
-      memo: 'test-transfer',
-      network: NETWORK,
-      token_code: ASSET_CODE,
-      token_address: TOKEN_ADDRESS,
-    }),
-  });
+  // 2. Sign + submit via GCP Cloud KMS
+  console.log('\n[2/4] Signing + submitting transfer via GCP Cloud KMS...');
+  const result = await kmsDisburse(RECIPIENT, AMOUNT, 'test-transfer', NETWORK, ASSET_CODE, TOKEN_ADDRESS);
 
-  if (!workerRes.ok) {
-    const err = await workerRes.text();
-    throw new Error(`Worker request failed: ${workerRes.status} ${err}`);
+  if (!result.success) {
+    throw new Error(`KMS transfer failed: ${result.error}`);
   }
 
-  const workerData = await workerRes.json() as { success: boolean; hash?: string; error?: string };
-  if (!workerData.success) {
-    throw new Error(`Worker transfer failed: ${workerData.error}`);
-  }
-
-  const txHash = workerData.hash;
+  const txHash = result.hash;
   console.log(`Transfer submitted. Tx hash: ${txHash}`);
 
   // 3. Poll tx status (wait 3s first, max 3 attempts)

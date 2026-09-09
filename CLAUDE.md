@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Payments**: `sepay-pg-node` (SePay sandbox/prod PG integration)
 - **Queue**: kafkajs (Kafka)
 - **Blockchain**: `@stellar/stellar-sdk` (Stellar network)
-- **Signing**: `@google-cloud/kms` — Stellar tx signing via GCP Cloud KMS Ed25519 (default `STELLAR_SIGNER_PROVIDER=kms`, ADC auth). Legacy Cloudflare signer (`stellar_signer_worker/`, provider `worker`) retained as rollback until decommissioned.
+- **Signing**: `@google-cloud/kms` — Stellar tx signing via GCP Cloud KMS Ed25519 (ADC auth).
 
 ## Docker
 
@@ -177,7 +177,7 @@ All errors return standardized format with `X-Trace-ID` header:
 - `sepayPgService.ts` — SePay checkout session
 - `orderService.ts` — deposit/withdrawal creation, confirmPayment, cancelOrder, handleChainEvent, formatOrderResponse
 - `queueService.ts` — Kafka producer: emitDisburseCrypto, emitOrderPaid
-- `stellarService.ts` — Stellar payment: initStellarServer, loadHotWallet, disburseUSDC. Supports `kms` (GCP Cloud KMS, default) and legacy `worker` providers
+- `stellarService.ts` — Stellar payment: initStellarServer, loadHotWallet, disburseUSDC (in-process signing via GCP Cloud KMS)
 - `gcpKmsService.ts` — GCP Cloud KMS Ed25519 signing: signTxHash (raw data field for PureEdDSA), getStellarPublicKey, resolveSourcePublicKey (wallet-address verification)
 - `encryptionService.ts` — AES-256-GCM encrypt/decrypt for wallet secrets
 - `callbackService.ts` — webhook callback with retry (3×), logging, HMAC signature, dual-secret rotation
@@ -236,7 +236,6 @@ All via `import 'dotenv/config'`. See `.env.example`:
 | `STELLAR_NETWORK` | testnet/public |
 | `STELLAR_HOT_WALLET_NAME` | Default: stellar_hot_wallet |
 | `STELLAR_HOT_WALLET_ENCRYPTION_KEY` | 32+ char key for AES-256-GCM |
-| `STELLAR_SIGNER_PROVIDER` | `kms` (default) or `worker` (legacy Cloudflare fallback, retiring) |
 | `STELLAR_HOT_WALLET_PUBLIC_KEY` | Stellar `G...` address of the imported KMS key (verified against KMS public key) |
 | `GCP_KMS_PROJECT_ID` | GCP project id (e.g. graceful-envoy-463407-a1) |
 | `GCP_KMS_LOCATION_ID` | KMS location (e.g. asia-southeast1) |

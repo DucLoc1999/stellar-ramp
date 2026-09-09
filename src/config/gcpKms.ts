@@ -1,16 +1,13 @@
-export type SignerProvider = 'kms' | 'worker';
-
 export interface GcpKmsConfig {
   projectId: string;
   locationId: string;
   keyRing: string;
   keyId: string;
   keyVersion: string;
-  provider: SignerProvider;
 }
 
 export function loadGcpKmsConfig(env: NodeJS.ProcessEnv = process.env): GcpKmsConfig {
-  const required: Record<Exclude<keyof GcpKmsConfig, 'keyVersion' | 'provider'>, string | undefined> = {
+  const required: Record<Exclude<keyof GcpKmsConfig, 'keyVersion'>, string | undefined> = {
     projectId: env.GCP_KMS_PROJECT_ID,
     locationId: env.GCP_KMS_LOCATION_ID,
     keyRing: env.GCP_KMS_KEY_RING,
@@ -28,6 +25,5 @@ export function loadGcpKmsConfig(env: NodeJS.ProcessEnv = process.env): GcpKmsCo
   return {
     ...(required as Record<keyof typeof required, string>),
     keyVersion: env.GCP_KMS_KEY_VERSION || '1',
-    provider: env.STELLAR_SIGNER_PROVIDER === 'worker' ? 'worker' : 'kms',
   };
 }

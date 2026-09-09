@@ -4,7 +4,6 @@ import { emitDisburseCrypto, isKafkaAvailable } from './queueService';
 import { OrderState } from '../models/types';
 import { fireCallback } from './callbackService';
 import { signTxHash, resolveSourcePublicKey } from './gcpKmsService';
-import { loadGcpKmsConfig } from '../config/gcpKms';
 
 export const SUPPORTED_TOKEN_ISSUER = process.env.TOKEN_ADDRESS || '';
 export const DEFAULT_ASSET_CODE = process.env.ASSET_CODE || 'USDC';
@@ -144,7 +143,7 @@ export async function initStellarServer(network?: string) {
 }
 
 // ---------------------------------------------------------------------------
-// GCP KMS signing path (replaces the Cloudflare signer worker)
+// GCP KMS signing path
 // ---------------------------------------------------------------------------
 
 export const MIN_XLM_BALANCE = '0.00001';
@@ -295,7 +294,7 @@ async function signAndSubmitTransaction(
   }
 }
 
-async function kmsDisburse(
+export async function kmsDisburse(
   destination: string,
   amount: string,
   memo: string,
@@ -391,80 +390,10 @@ async function kmsFund(destination: string, startingBalance?: string): Promise<F
   return { success: result.success, hash: result.hash, already_exists: false, error: result.error };
 }
 
-function isWorkerProvider(): boolean {
-  return loadGcpKmsConfig().provider === 'worker';
-}
-
 export interface DisburseResult {
   hash: string;
   success: boolean;
   error?: string;
-}
-
-const DEFAULT_WORKER_URL = 'http://localhost:8787';
-
-async function callWorker(
-  destination: string,
-  amount: string,
-  memo: string,
-  network: string,
-  tokenCode?: string,
-  tokenAddress?: string
-): Promise<{ hash: string; success: boolean; error?: string }> {
-  const workerUrl = process.env.WORKER_URL || DEFAULT_WORKER_URL;
-  const authToken = process.env.WORKER_AUTH_TOKEN;
-
-  if (!authToken) {
-    throw new Error('WORKER_AUTH_TOKEN not configured');
-  }
-
-  const requestBody: Record<string, unknown> = {
-    destination,
-    amount,
-    memo,
-    network,
-  };
-
-  if (tokenCode && tokenAddress) {
-    requestBody.token_code = tokenCode;
-    requestBody.token_address = tokenAddress;
-  }
-
-  const amountFormatted = parseFloat(amount).toFixed(7).replace(/\.?0+$/, '');
-  requestBody.amount = amountFormatted;
-
-  const response = await fetch(workerUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${authToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    return {
-      hash: '',
-      success: false,
-      error: `Worker error ${response.status}: ${errorText}`,
-    };
-  }
-
-  const data = await response.json() as { success: boolean; hash?: string; ledger?: number; error?: string };
-
-  if (!data.success) {
-    return {
-      hash: data.hash || '',
-      success: false,
-      error: data.error || 'Worker returned failure',
-    };
-  }
-
-  return {
-    hash: data.hash || '',
-    success: true,
-  };
 }
 
 export interface FundWalletResult {
@@ -478,42 +407,7 @@ export async function fundWallet(
   destination: string,
   startingBalance?: string
 ): Promise<FundWalletResult> {
-  if (!isWorkerProvider()) {
-    return kmsFund(destination, startingBalance);
-  }
-
-  const workerUrl = (process.env.WORKER_URL || DEFAULT_WORKER_URL) + '/fund';
-  const authToken = process.env.WORKER_AUTH_TOKEN;
-
-  if (!authToken) throw new Error('WORKER_AUTH_TOKEN not configured');
-
-  const network = (process.env.STELLAR_NETWORK || 'testnet').toUpperCase();
-
-  const response = await fetch(workerUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${authToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      destination,
-      starting_balance: startingBalance || '2.5',
-      network,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    return { success: false, hash: '', already_exists: false, error: `Worker error ${response.status}: ${errorText}` };
-  }
-
-  const data = await response.json() as { success: boolean; hash?: string; already_exists?: boolean; error?: string };
-
-  if (!data.success) {
-    return { success: false, hash: data.hash || '', already_exists: false, error: data.error || 'Worker returned failure' };
-  }
-
-  return { success: true, hash: data.hash || '', already_exists: data.already_exists ?? false };
+  return kmsFund(destination, startingBalance);
 }
 
 export async function disburseUSDC(
@@ -538,16 +432,7 @@ export async function disburseUSDC(
     return { hash: order.transaction_hash || '', success: order.order_state === OrderState.COMPLETED, error: order.order_state === OrderState.COMPLETED ? undefined : 'ORDER_NOT_ELIGIBLE' };
   }
 
-  const result = isWorkerProvider()
-    ? await callWorker(
-        recipientPublicKey,
-        amount,
-        paymentCode,
-        network,
-        tokenCode,
-        tokenAddress
-      )
-    : await kmsDisburse(recipientPublicKey, amount, paymentCode, network, tokenCode, tokenAddress);
+  const result = await kmsDisburse(recipientPublicKey, amount, paymentCode, network, tokenCode, tokenAddress);
 
   if (result.success) {
     await db('orders')
