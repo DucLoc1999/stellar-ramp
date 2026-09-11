@@ -1,0 +1,83 @@
+stages:
+  - test
+  - deploy
+
+# ==========================================
+# STAGE 1: CI / Testing (GitLab Cloud Infrastructure)
+# ==========================================
+test_application:
+  stage: test
+  image: node:24-alpine
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  script:
+    - npm ci
+    - npx tsc --noEmit
+    - npm test
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ==========================================
+# STAGE 2: CD / Docker Deployment (Runs on Your Production Server)
+# ==========================================
+deploy_to_production:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  tags:
+    - prod-deploy
+  needs: ["test_application"]
+  script:
+    - echo "🚀 Starting Docker-based deployment..."
+
+    # 0. Fix git dubious ownership issue
+    - git config --global --add safe.directory /mnt/code/be/usdt247-payment
+
+    # 1. Navigate to deployment directory
+    - cd /mnt/code/be/usdt247-payment
+
+    # 2. Pull latest code from main branch
+    - git pull origin main
+
+    # 3. Create .env file from GitLab CI/CD variables (if needed)
+    # Uncomment and set your variables in GitLab CI/CD Settings > Variables
+    # - echo "DB_HOST=$DB_HOST" >> .env
+    # - echo "DB_PORT=$DB_PORT" >> .env
+    # - echo "PORT=$PORT" >> .env
+
+    # 4. Build Docker images
+    # Uses Docker layer caching - only rebuilds changed layers
+    - echo "📦 Building Docker images..."
+    - docker compose build --no-cache
+
+    # 5. Stop and remove old containers gracefully
+    - echo "🛑 Stopping old containers..."
+    - docker compose down || true
+
+    # 6. Start new containers in detached mode
+    - echo "▶️  Starting new containers..."
+    - docker compose up -d
+
+    # 7. Run database migrations (if applicable)
+    - echo "🗄️  Running migrations..."
+    - docker compose exec -T payment-api npm run migrate:prod || true
+
+    # 8. Health check - wait for services to be healthy
+    - echo "🏥 Checking service health..."
+    - sleep 10
+    - docker compose ps
+
+    # 9. Clean up old/dangling Docker images to save disk space
+    - echo "🧹 Cleaning up old images..."
+    - docker image prune -f
+
+    # 10. Show logs for verification
+    - echo "📋 Container logs:"
+    - docker compose logs --tail=50
+
+  after_script:
+    # Always show running containers for debugging
+    - docker ps -a
