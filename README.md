@@ -1,12 +1,12 @@
-# payment_svc — Seamless fiat ↔ USDC rails
+# payment_service — Seamless fiat ↔ USDC rails
 
 > The frictionless bridge that turns Vietnamese Dong into USDC and back — quietly, reliably, and securely.
 
-`payment_svc` is a backend for partner integrations to move between fiat (VND) and crypto (USDC/XLM). It quotes live prices, collects payments through Vietnamese banks via SePay, and settles on the Stellar network — without forcing partners to reinvent payment infrastructure.
+`payment_service` is a backend for partner integrations to move between fiat (VND) and crypto (USDC/XLM). It quotes live prices, collects payments through Vietnamese banks via SePay, and settles on the Stellar network — without forcing partners to reinvent payment infrastructure.
 
 ## 🎯 Philosophy
 
-Financial integrations live or die on **trust, traceability, and uptime**. So `payment_svc` is built around three commitments:
+Financial integrations live or die on **trust, traceability, and uptime**. So `payment_service` is built around three commitments:
 
 1. **Secure by architecture** — hot-wallet secrets never sit in the API process; Stellar transactions are signed in-process via GCP Cloud KMS Ed25519 (ADC-backed), so private keys never touch the application.
 2. **Predictable by design** — every state change is observable, audited, and delivered to you through signed webhooks.
@@ -79,7 +79,7 @@ Stellar signing is done in-process via GCP Cloud KMS Ed25519 (ADC auth; requires
 Knex needs explicit env vars (it doesn't auto-load `.env`):
 
 ```bash
-DB_HOST=127.0.0.1 DB_USER=admin DB_PASSWORD=123456 DB_NAME=payment_svc \
+DB_HOST=127.0.0.1 DB_USER=admin DB_PASSWORD=123456 DB_NAME=payment_service \
   npx tsx node_modules/.bin/knex migrate:latest --knexfile src/knexfile.ts
 ```
 
@@ -170,7 +170,7 @@ Migrations run in-process on startup, so production needs no `tsx`. Secrets are 
 ## 📁 Project Structure
 
 ```
-payment_svc/
+payment_service/
 ├── src/
 │   ├── server.ts               # Entry point
 │   ├── app.ts                  # Fastify factory + route registration
